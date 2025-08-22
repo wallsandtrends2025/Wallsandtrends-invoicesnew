@@ -56,7 +56,7 @@ export default function DashboardLayout() {
           {/* ✅ Logo exactly same size as before */}
           <div className="invoices-logo select-none">
             <img
-              src="/invoices/public/invoice-logo.png"
+              src="/invoice-logo.png"
               alt="Logo"
               style={{ width: "100px", height: "auto" }}
               draggable="false"

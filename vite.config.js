@@ -3,5 +3,5 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/invoices/', // 👈 required for subfolder deploys
+  base: '/', // Updated for root domain deployment
 })
