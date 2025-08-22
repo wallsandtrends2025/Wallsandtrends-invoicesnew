@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="/fonts/calibri-normal.js"></script>
+  </head>
+  <body>
+    <button onclick="generate()">Generate PDF</button>
+    <script>
+      function generate() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        doc.setFont("calibri", "normal");
+        doc.setFontSize(14);
+        doc.text("Hello from Calibri!", 20, 20);
+        doc.save("calibri-test.pdf");
+      }
+    </script>
+  </body>
+</html>
