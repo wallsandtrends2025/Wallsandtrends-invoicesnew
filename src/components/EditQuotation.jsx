@@ -6,56 +6,80 @@ import {
   doc,
   getDoc,
   updateDoc,
-  collection,
-  getDocs,
 } from "firebase/firestore";
 
 export default function EditQuotation() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const [quotation, setQuotation] = useState(null);
-  const [services, setServices] = useState([]);
+  const [docData, setDocData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [companies, setCompanies] = useState(["WT", "WTX"]);
-  const [paymentOptions] = useState(["Pending", "Partial", "Paid"]);
-  const [serviceOptions, setServiceOptions] = useState([]);
+
+  // same options; keep your existing choices
+  const companies = ["WT", "WTX", "WTPL", "WTXPL"];
+  const paymentOptions = ["Pending", "Partial", "Paid"];
+  const serviceOptions = [
+    { value: "Lyrical Videos", label: "Lyrical Videos" },
+    { value: "Teasers", label: "Teasers" },
+    { value: "Trailers", label: "Trailers" },
+    { value: "Posters", label: "Posters" },
+    { value: "Promos", label: "Promos" },
+    { value: "Marketing", label: "Marketing" },
+    { value: "Web Development", label: "Web Development" },
+    { value: "Editing", label: "Editing" },
+    { value: "Meme Marketing", label: "Meme Marketing" },
+    { value: "Creative design", label: "Creative design" },
+  ];
+
+  // normalize incoming record to a consistent shape for editing
+  const normalizeForEdit = (raw) => {
+    const proforma_id = raw.proforma_id || raw.quotation_id || "";
+    const proforma_date = raw.proforma_date || raw.quotation_date || raw.date || "";
+    const proforma_title = raw.proforma_title || raw.quotation_title || "";
+    const company = raw.proforma_type || raw.quotation_type || raw.company || "";
+    const payment_status = raw.payment_status || "Pending";
+
+    // services: if name is array (from multi-select), pick first for single-select display
+    const services = (raw.services || []).map((s) => {
+      const nameStr = Array.isArray(s.name) ? (s.name[0] || "") : (s.name || "");
+      return {
+        ...s,
+        // for react-select single
+        serviceType: nameStr ? { value: nameStr, label: nameStr } : null,
+        description: s.description || "",
+        amount: s.amount || "",
+      };
+    });
+
+    return {
+      ...raw,
+      proforma_id,
+      proforma_date,
+      proforma_title,
+      company,
+      payment_status,
+      services,
+    };
+  };
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const quotationRef = doc(db, "quotations", id);
-        const docSnap = await getDoc(quotationRef);
+        const ref = doc(db, "quotations", id);
+        const snap = await getDoc(ref);
 
-        if (!docSnap.exists()) {
-          alert("Quotation not found!");
+        if (!snap.exists()) {
+          alert("Document not found!");
           return navigate("/dashboard/all-quotations");
         }
 
-        const data = docSnap.data();
-        const formattedServices =
-          data.services?.map((s) => ({
-            ...s,
-            serviceType: { value: s.name, label: s.name },
-          })) || [];
-
-        setQuotation({
-          ...data,
-          services: formattedServices,
-        });
-
-        setServiceOptions([
-          { value: "Lyrical Videos", label: "Lyrical Videos" },
-          { value: "Teasers", label: "Teasers" },
-          { value: "Trailers", label: "Trailers" },
-          { value: "Posters", label: "Posters" },
-          { value: "Promos", label: "Promos" },
-        ]);
-
-        setLoading(false);
+        const normalized = normalizeForEdit(snap.data());
+        setDocData(normalized);
       } catch (error) {
-        console.error("Error fetching quotation:", error);
+        console.error("Error fetching proforma:", error);
         alert("Something went wrong.");
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -63,29 +87,47 @@ export default function EditQuotation() {
   }, [id, navigate]);
 
   const handleServiceChange = (index, field, value) => {
-    const updated = [...quotation.services];
+    const updated = [...docData.services];
     if (field === "serviceType") {
       updated[index].serviceType = value;
-      updated[index].name = value.value;
+      updated[index].name = value?.value || "";
     } else {
       updated[index][field] = value;
     }
-    setQuotation({ ...quotation, services: updated });
+    setDocData({ ...docData, services: updated });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     try {
-      const updatedData = {
-        ...quotation,
-        services: quotation.services.map((s) => ({
-          name: s.serviceType.value,
-          description: s.description || "",
-          amount: s.amount || 0,
-        })),
+      // prepare services back to persisted shape
+      const persistedServices = (docData.services || []).map((s) => ({
+        name: s.serviceType?.value || s.name || "",
+        description: s.description || "",
+        amount: s.amount ? Number(s.amount) : 0,
+      }));
+
+      // write BOTH proforma_* and quotation_* for backward compatibility
+      const payload = {
+        ...docData,
+        proforma_id: docData.proforma_id,
+        proforma_date: docData.proforma_date,
+        proforma_title: docData.proforma_title,
+        proforma_type: docData.company,
+
+        // legacy mirrors
+        quotation_id: docData.proforma_id,
+        quotation_date: docData.proforma_date,
+        quotation_title: docData.proforma_title,
+        quotation_type: docData.company,
+
+        company: docData.company,
+        payment_status: docData.payment_status || "Pending",
+        services: persistedServices,
       };
 
-      await updateDoc(doc(db, "quotations", id), updatedData);
+      await updateDoc(doc(db, "quotations", id), payload);
       navigate("/dashboard/all-quotations");
     } catch (error) {
       console.error("Update failed:", error);
@@ -93,7 +135,9 @@ export default function EditQuotation() {
     }
   };
 
-  if (loading || !quotation) return <p className="text-center p-6">Loading...</p>;
+  if (loading || !docData) {
+    return <p className="text-center p-6">Loading...</p>;
+  }
 
   return (
     <div className="min-h-screen bg-black flex justify-center p-6">
@@ -101,34 +145,38 @@ export default function EditQuotation() {
         onSubmit={handleSubmit}
         className="bg-gray-900 text-white rounded-xl shadow-xl p-8 w-full max-w-4xl"
       >
-        <h2 className="text-3xl font-bold text-center mb-8">Edit Quotation</h2>
+        {/* Heading changed */}
+        <h2 className="text-3xl font-bold text-center mb-8">Edit Proforma</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Proforma Date */}
           <div>
-            <label className="block text-sm font-medium mb-1">Quotation Date</label>
+            <label className="block text-sm font-medium mb-1">Proforma Date</label>
             <input
               type="text"
-              value={quotation.date}
-              onChange={(e) => setQuotation({ ...quotation, date: e.target.value })}
+              value={docData.proforma_date}
+              onChange={(e) => setDocData({ ...docData, proforma_date: e.target.value })}
               className="w-full p-3 rounded bg-gray-800 border border-gray-700 text-white"
             />
           </div>
 
+          {/* Proforma Title */}
           <div>
-            <label className="block text-sm font-medium mb-1">Quotation Title</label>
+            <label className="block text-sm font-medium mb-1">Proforma Title</label>
             <input
               type="text"
-              value={quotation.quotation_title}
-              onChange={(e) => setQuotation({ ...quotation, quotation_title: e.target.value })}
+              value={docData.proforma_title}
+              onChange={(e) => setDocData({ ...docData, proforma_title: e.target.value })}
               className="w-full p-3 rounded bg-gray-800 border border-gray-700 text-white"
             />
           </div>
 
+          {/* Company */}
           <div>
             <label className="block text-sm font-medium mb-1">Select Company</label>
             <select
-              value={quotation.company}
-              onChange={(e) => setQuotation({ ...quotation, company: e.target.value })}
+              value={docData.company}
+              onChange={(e) => setDocData({ ...docData, company: e.target.value })}
               className="w-full p-3 rounded bg-gray-800 border border-gray-700 text-white"
             >
               {companies.map((c) => (
@@ -139,11 +187,12 @@ export default function EditQuotation() {
             </select>
           </div>
 
+          {/* Payment Status */}
           <div>
             <label className="block text-sm font-medium mb-1">Payment Status</label>
             <select
-              value={quotation.payment_status}
-              onChange={(e) => setQuotation({ ...quotation, payment_status: e.target.value })}
+              value={docData.payment_status}
+              onChange={(e) => setDocData({ ...docData, payment_status: e.target.value })}
               className="w-full p-3 rounded bg-gray-800 border border-gray-700 text-white"
             >
               {paymentOptions.map((p) => (
@@ -155,10 +204,11 @@ export default function EditQuotation() {
           </div>
         </div>
 
+        {/* Services */}
         <div className="mt-8 space-y-6">
           <h3 className="text-lg font-semibold text-white">Services</h3>
 
-          {quotation.services.map((s, index) => (
+          {docData.services.map((s, index) => (
             <div key={index} className="bg-gray-800 p-4 rounded-lg space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Service Name</label>
@@ -197,7 +247,7 @@ export default function EditQuotation() {
           type="submit"
           className="update-project-btn mt-10 mb-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold tracking-wide py-3 px-6 rounded-xl shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 ease-in-out"
         >
-          Update Quotation
+          Update Proforma
         </button>
       </form>
     </div>

@@ -1,5 +1,5 @@
 // CreateInvoice.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   collection,
@@ -7,9 +7,12 @@ import {
   doc,
   setDoc,
   runTransaction,
+  updateDoc,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import Select from "react-select";
+import { generateAndSaveBothChunkedPDFs } from "../utils/pdfChunkedStorage";
 
 export default function CreateInvoice() {
   const [yourCompany, setYourCompany] = useState("");
@@ -24,10 +27,41 @@ export default function CreateInvoice() {
     return today.toISOString().split("T")[0];
   });
   const [invoiceTitle, setInvoiceTitle] = useState("");
-  const [services, setServices] = useState([]);
+  const [services, setServices] = useState([]); // [{ name: string[]|string, description: string, amount: string|number }]
   const [paymentStatus, setPaymentStatus] = useState("Pending");
+  const [gstPaymentStatus, setGstPaymentStatus] = useState("Pending");
+
+  // PDF generation states
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState({ stage: "", progress: 0, message: "" });
+
+  // Inline errors (custom validation)
+  const [errors, setErrors] = useState({
+    yourCompany: "",
+    invoiceDate: "",
+    invoiceTitle: "",
+    selectedClientId: "",
+    services: "",
+    serviceRows: {}, // { idx: { name, amount, description } }
+  });
 
   const navigate = useNavigate();
+
+  // ✅ Amount formatter (Indian style, 30,000.00)
+  const formatAmount = (num) => {
+    if (isNaN(num)) return "0.00";
+    return new Intl.NumberFormat("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Number(num));
+  };
+
+  // helper: renders "Label *" with red asterisk
+  const RequiredLabel = ({ children }) => (
+    <span style={{ fontWeight: 600 }}>
+      {children} <span style={{ color: "#d32f2f" }}>*</span>
+    </span>
+  );
 
   const serviceOptions = [
     { label: "Lyrical Videos", value: "Lyrical Videos" },
@@ -54,11 +88,11 @@ export default function CreateInvoice() {
     { label: "Performance Marketing", value: "Performance Marketing" },
     { label: "Web Development", value: "Web Development" },
     { label: "Ad Film", value: "Ad Film" },
-    { label: "\u2060Brand Film", value: "\u2060Brand Film" },
-    { label: "\u2060\u2060Corporate Film", value: "\u2060Corporate Film" },
-    { label: "\u2060Teaser + Trailer + Business cut", value: "\u2060Teaser + Trailer + Business cut" },
+    { label: "Brand Film", value: "Brand Film" },
+    { label: "Corporate Film", value: "Corporate Film" },
   ];
 
+  // fetch clients & projects
   useEffect(() => {
     const fetchData = async () => {
       const clientSnap = await getDocs(collection(db, "clients"));
@@ -78,14 +112,15 @@ export default function CreateInvoice() {
     fetchData();
   }, []);
 
+  // generate invoice id on company/date
   useEffect(() => {
     if (yourCompany && invoiceDate) generateInvoiceId(yourCompany);
   }, [yourCompany, invoiceDate]);
 
   const generateInvoiceId = async (company) => {
-    const [yyyy, mm, dd] = invoiceDate.split("-");
+    const [yyyy, mm] = invoiceDate.split("-");
     const yy = yyyy.slice(2);
-    const dateStr = `${yy}${mm}`; // YYMM only
+    const dateStr = `${yy}${mm}`; // YYMM
     const counterKey = `${company}_${dateStr}`;
     const counterRef = doc(db, "invoice_counters", counterKey);
 
@@ -101,35 +136,168 @@ export default function CreateInvoice() {
       const invoiceId = `${company}${dateStr}INV${String(count).padStart(3, "0")}`;
       setPreviewInvoiceNumber(invoiceId);
     } catch (error) {
-      console.error("\u274C Error generating invoice ID:", error);
+      console.error("❌ Error generating invoice ID:", error);
     }
   };
 
-  const amount = services.reduce((sum, s) => sum + Number(s.amount || 0), 0);
+  // sanitize services
+  const sanitizeServices = () =>
+    services.map((s, i) => {
+      const nameStr = Array.isArray(s?.name)
+        ? s.name.filter(Boolean).join(", ")
+        : (s?.name ?? "");
+      const amountNum = Number(s?.amount ?? 0);
+      return {
+        name: String(nameStr || `Service ${i + 1}`),
+        description: String(s?.description ?? ""),
+        amount: isNaN(amountNum) ? 0 : amountNum,
+      };
+    });
 
-  const getTaxBreakdown = () => {
-    if (!selectedClient) return { cgst: 0, sgst: 0, igst: 0, totalTax: 0, totalAmount: 0 };
-    const isIndian = selectedClient.country === "India";
-    const isTelangana = selectedClient.state === "Telangana";
+  // computed amounts
+  const sanitized = sanitizeServices();
+  const subtotal = sanitized.reduce((sum, s) => sum + Number(s.amount || 0), 0);
 
-    const cgst = isIndian && isTelangana ? amount * 0.09 : 0;
-    const sgst = isIndian && isTelangana ? amount * 0.09 : 0;
-    const igst = isIndian && !isTelangana ? amount * 0.18 : 0;
+  const isIndian = selectedClient?.country === "India";
+  const isTelangana = selectedClient?.state === "Telangana";
 
-    const totalTax = cgst + sgst + igst;
-    const totalAmount = Number(amount) + totalTax;
+  let cgstRate = 0, sgstRate = 0, igstRate = 0;
+  if (isIndian && isTelangana) { cgstRate = 9; sgstRate = 9; }
+  else if (isIndian) { igstRate = 18; }
 
-    return { cgst, sgst, igst, totalTax, totalAmount };
+  const cgst = (subtotal * cgstRate) / 100;
+  const sgst = (subtotal * sgstRate) / 100;
+  const igst = (subtotal * igstRate) / 100;
+
+  const tax_amount = cgst + sgst + igst;
+  const grand_total = subtotal + tax_amount;
+
+  // company -> group mapping & filtered clients
+  const companyToGroup = {
+    WT: "WT_WTPL",
+    WTPL: "WT_WTPL",
+    WTX: "WTX_WTXPL",
+    WTXPL: "WTX_WTXPL",
   };
 
-  const { cgst, sgst, igst, totalTax, totalAmount } = getTaxBreakdown();
+  // sort clients A→Z (company_name, then client_name)
+  const sortedClients = useMemo(() => {
+    const copy = [...clients];
+    copy.sort((a, b) => {
+      const aCo = (a.company_name || "").toLowerCase();
+      const bCo = (b.company_name || "").toLowerCase();
+      if (aCo !== bCo) return aCo.localeCompare(bCo);
+      return (a.client_name || "").toLowerCase().localeCompare((b.client_name || "").toLowerCase());
+    });
+    return copy;
+  }, [clients]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!selectedClient || !invoiceDate || !previewInvoiceNumber || !invoiceTitle || services.length === 0) {
-      alert("Please fill in all required fields.");
+  // filter by selected company group
+  const filteredClients = useMemo(() => {
+    const group = companyToGroup[yourCompany];
+    if (!group) return [];
+    return sortedClients.filter((c) => c.company_group === group);
+  }, [sortedClients, yourCompany]);
+
+  // clear selected client if mismatch after company change
+  useEffect(() => {
+    if (!yourCompany) {
+      setSelectedClientId("");
+      setSelectedClient(null);
       return;
     }
+    if (selectedClientId) {
+      const stillThere = filteredClients.find((c) => c.id === selectedClientId);
+      if (!stillThere) {
+        setSelectedClientId("");
+        setSelectedClient(null);
+      }
+    }
+  }, [yourCompany, filteredClients, selectedClientId]);
+
+  // validation
+  const validate = () => {
+    const nextErrors = {
+      yourCompany: "",
+      invoiceDate: "",
+      invoiceTitle: "",
+      selectedClientId: "",
+      services: "",
+      serviceRows: {},
+    };
+
+    if (!yourCompany) nextErrors.yourCompany = "Select your company.";
+    if (!invoiceDate) nextErrors.invoiceDate = "Select invoice date.";
+    if (!invoiceTitle.trim()) nextErrors.invoiceTitle = "Enter invoice title.";
+    if (!selectedClientId) nextErrors.selectedClientId = "Select a client.";
+
+    // Require at least one service row
+    if (services.length === 0) {
+      nextErrors.services = "Add at least one service.";
+    } else {
+      // Validate each added service row
+      services.forEach((s, idx) => {
+        const rowErr = {};
+        const amt = s?.amount;
+
+        // ✅ Service Name required
+        if (!s?.name || (Array.isArray(s.name) && s.name.length === 0)) {
+          rowErr.name = "Select at least one service name.";
+        }
+
+        if (amt === "" || amt === undefined || isNaN(Number(amt))) {
+          rowErr.amount = "Enter a valid amount.";
+        } else if (Number(amt) <= 0) {
+          rowErr.amount = "Amount must be greater than 0.";
+        }
+
+        if (!String(s?.description || "").trim()) {
+          rowErr.description = "Enter a short description.";
+        }
+
+        if (Object.keys(rowErr).length) {
+          nextErrors.serviceRows[idx] = rowErr;
+        }
+      });
+    }
+
+    setErrors(nextErrors);
+    const hasRowErrors = Object.keys(nextErrors.serviceRows).length > 0;
+    const hasTopErrors =
+      nextErrors.yourCompany ||
+      nextErrors.invoiceDate ||
+      nextErrors.invoiceTitle ||
+      nextErrors.selectedClientId ||
+      nextErrors.services;
+    return !(hasTopErrors || hasRowErrors);
+  };
+
+  // submit
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!validate()) return;
+
+    setIsGeneratingPDF(true);
+    setPdfProgress({ stage: "starting", progress: 5, message: "Creating invoice..." });
+
+    const sanitizedNow = sanitizeServices();
+    const subtotalNow = sanitizedNow.reduce((sum, s) => sum + Number(s.amount || 0), 0);
+
+    const isIndianNow = selectedClient?.country === "India";
+    const isTelanganaNow = selectedClient?.state === "Telangana";
+
+    let cgstRateNow = 0, sgstRateNow = 0, igstRateNow = 0;
+    if (isIndianNow && isTelanganaNow) { cgstRateNow = 9; sgstRateNow = 9; }
+    else if (isIndianNow) { igstRateNow = 18; }
+
+    const cgstNow = (subtotalNow * cgstRateNow) / 100;
+    const sgstNow = (subtotalNow * sgstRateNow) / 100;
+    const igstNow = (subtotalNow * igstRateNow) / 100;
+
+    const tax_amountNow = cgstNow + sgstNow + igstNow;
+    const grand_totalNow = subtotalNow + tax_amountNow;
+
+    const isGSTApplicable = !!selectedClient && isIndianNow;
 
     const invoiceData = {
       invoice_id: previewInvoiceNumber,
@@ -137,218 +305,407 @@ export default function CreateInvoice() {
       project_id: selectedProject ? selectedProject.value : "",
       invoice_type: yourCompany,
       invoice_title: invoiceTitle,
-      invoice_date: invoiceDate,
-      services,
-      subtotal: Number(amount),
-      cgst,
-      sgst,
-      igst,
-      tax_amount: totalTax,
-      tax_type:
-        selectedClient.country !== "India"
-          ? "None"
-          : selectedClient.state === "Telangana"
-          ? "GST"
-          : "IGST",
-      total_amount: totalAmount,
+      invoice_date: invoiceDate, // YYYY-MM-DD
+      services: sanitizedNow,
+      subtotal: Number(subtotalNow.toFixed(2)),
+      cgst: Number(cgstNow.toFixed(2)),
+      sgst: Number(sgstNow.toFixed(2)),
+      igst: Number(igstNow.toFixed(2)),
+      tax_amount: Number(tax_amountNow.toFixed(2)),
+      total_amount: Number(grand_totalNow.toFixed(2)),
       payment_status: paymentStatus,
+      gst_payment_status: isGSTApplicable ? gstPaymentStatus : "NA",
       payment_date: null,
       pdf_url: "",
-      created_at: new Date(),
+      tax_pdf_url: "",
+      proforma_pdf_url: "",
+      created_at: Timestamp.now(),
     };
 
     try {
+      setPdfProgress({ stage: "saving", progress: 15, message: "Saving invoice to database..." });
       await setDoc(doc(db, "invoices", previewInvoiceNumber), invoiceData);
-      navigate(`/dashboard/invoice/${previewInvoiceNumber}`);
+
+      setPdfProgress({ stage: "generating", progress: 30, message: "Generating and saving PDF files..." });
+
+      const pdfInvoiceData = {
+        ...invoiceData,
+        invoice_id: previewInvoiceNumber,
+        invoice_date_display: new Date(invoiceDate).toLocaleDateString("en-IN"),
+        client_display_name: `${selectedClient?.company_name ?? ""} — ${selectedClient?.client_name ?? ""}`,
+        client_address: selectedClient?.address ?? "",
+        client_email: selectedClient?.email ?? "",
+        client_phone: selectedClient?.phone ?? "",
+        project_name: selectedProject?.label ?? "",
+        company_bucket: ["WT", "WTPL"].includes(yourCompany) ? "WT" : "WTX",
+        gst_payment_status: invoiceData.gst_payment_status,
+        line_items: sanitizedNow.map((s) => ({
+          name: s.name,
+          description: s.description,
+          amount: Number(s.amount || 0),
+        })),
+      };
+
+      const { taxPdfId, proformaPdfId } = await generateAndSaveBothChunkedPDFs(
+        pdfInvoiceData,
+        selectedClient
+      );
+
+      setPdfProgress({ stage: "updating", progress: 90, message: "Updating invoice with PDF references..." });
+      await updateDoc(doc(db, "invoices", previewInvoiceNumber), {
+        pdf_url: `firestore:${taxPdfId}`,
+        tax_pdf_id: taxPdfId,
+        proforma_pdf_id: proformaPdfId,
+      });
+
+      setPdfProgress({ stage: "complete", progress: 100, message: "Invoice and PDFs saved successfully!" });
+
+      setTimeout(() => {
+        setIsGeneratingPDF(false);
+        navigate(`/dashboard/invoice/${previewInvoiceNumber}`);
+      }, 1200);
     } catch (error) {
-      console.error("\u274C Error creating invoice:", error);
-      alert("Failed to create invoice.");
+      console.error("❌ Error creating invoice:", error);
+      setPdfProgress({ stage: "error", progress: 0, message: `Error: ${error.message}` });
+      setIsGeneratingPDF(false);
+      alert(`Failed to create invoice and/or generate PDFs.\n\nDetails: ${error.message}`);
     }
   };
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "#f3f4f6", display: "flex", justifyContent: "center", padding: "2rem" }}>
-      <form onSubmit={handleSubmit} style={{ background: "#fff", borderRadius: "10px", padding: "30px", width: "100%", maxWidth: "700px", boxShadow: "0 4px 10px rgba(0,0,0,0.1)" }}>
+      {/* Turn OFF native HTML5 validation */}
+      <form onSubmit={handleSubmit} noValidate
+        style={{ background: "#fff", borderRadius: "10px", padding: "30px", width: "100%", maxWidth: "700px", boxShadow: "0 4px 10px rgba(0,0,0,0.1)" }}>
         <h2 style={{ fontSize: "24px", fontWeight: "bold", textAlign: "center", marginBottom: "30px" }}>Create Invoice</h2>
 
-       <label style={{ fontWeight: "600" }}>Select Company</label>
-      <select value={yourCompany} onChange={(e) => setYourCompany(e.target.value)} required style={{ width: "100%", padding: "10px", marginBottom: "20px" }}>
-        <option value="">Select Company</option>
-        <option value="WT">WT</option>
-        <option value="WTPL">WTPL</option>
-        <option value="WTX">WTX</option>
-        <option value="WTXPL">WTXPL</option>
-      </select>
-
-      <div style={{ display: "flex", gap: "20px", marginBottom: "20px" }}>
-        <div style={{ flex: 1 }}>
-          <label style={{ fontWeight: "600" }}>Invoice Date</label>
-          <input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} required style={{ width: "100%", padding: "10px" }} />
-        </div>
-
-        <div style={{ flex: 1 }}>
-          <label style={{ fontWeight: "600" }}>Title of Invoice</label>
-          <input type="text" value={invoiceTitle} onChange={(e) => setInvoiceTitle(e.target.value)} required style={{ width: "100%", padding: "10px" }} />
-        </div>
-      </div>
-
-      <label style={{ fontWeight: "600" }}>Invoice Number</label>
-      <input type="text" value={previewInvoiceNumber} disabled style={{ width: "100%", padding: "10px", marginBottom: "20px", background: "#eee", fontWeight: "bold" }} />
-
-      <label style={{ fontWeight: "600" }}>Select Client</label>
-      <Select
-        options={clients.map(client => ({
-          value: client.id,
-          label: `${client.company_name} — ${client.client_name}`,
-        }))}
-        value={clients.find(c => c.id === selectedClientId) ? {
-          value: selectedClientId,
-          label: `${selectedClient?.company_name} — ${selectedClient?.client_name}`
-        } : null}
-        onChange={(selected) => {
-          setSelectedClientId(selected.value);
-          const client = clients.find((c) => c.id === selected.value);
-          setSelectedClient(client);
-        }}
-        placeholder="Select Client..."
-        isSearchable
-      />
-
-      <label style={{ fontWeight: "600", marginTop: "20px", display: "block" }}>Link Project</label>
-      <Select
-        options={projects}
-        value={selectedProject}
-        onChange={(selected) => setSelectedProject(selected)}
-        placeholder="Select Project..."
-        isSearchable
-        styles={{
-          control: (base) => ({
-            ...base,
-            padding: "2px",
-            marginBottom: "20px",
-          }),
-        }}
-      />
-
-     <h3 style={{ fontSize: "20px", fontWeight: "600", marginTop: "30px" }}>Services</h3>
-
-{services.map((service, idx) => (
-  <div key={idx} style={{ marginBottom: "25px", padding: "20px", background: "#fafafa", border: "1px solid #ddd", borderRadius: "8px" }}>
-    
-    {/* Service Name Multi-Select */}
-    <div style={{ marginBottom: "15px" }}>
-      <label style={{ fontWeight: "600", display: "block", marginBottom: "6px" }}>
-        Service Name {idx + 1}
-      </label>
-      <Select
-        isMulti
-        options={serviceOptions}
-        value={service.name.map(n => serviceOptions.find(opt => opt.value === n))}
-        onChange={(selectedOptions) => {
-          const updated = [...services];
-          updated[idx].name = selectedOptions.map(opt => opt.value);
-          setServices(updated);
-        }}
-        placeholder="Select Service(s)"
-        isSearchable
-        styles={{
-          control: (base) => ({
-            ...base,
-            minHeight: "44px",
-            padding: "2px",
-            borderColor: "#ccc",
-          }),
-        }}
-      />
-    </div>
-
-    {/* Description */}
-    <div style={{ marginBottom: "15px" }}>
-      <label style={{ fontWeight: "600", display: "block", marginBottom: "6px" }}>Service Description</label>
-      <textarea
-        value={service.description}
-        onChange={(e) => {
-          const updated = [...services];
-          updated[idx].description = e.target.value;
-          setServices(updated);
-        }}
-        placeholder="Enter Service Description"
-        style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
-        rows={3}
-        required
-      />
-    </div>
-
-    {/* Amount */}
-    <div style={{ marginBottom: "15px" }}>
-      <label style={{ fontWeight: "600", display: "block", marginBottom: "6px" }}>Service Amount ₹</label>
-      <input
-        type="number"
-        value={service.amount}
-        onChange={(e) => {
-          const updated = [...services];
-          updated[idx].amount = e.target.value;
-          setServices(updated);
-        }}
-        placeholder="Enter Amount"
-        style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
-        required
-      />
-    </div>
-
-    {services.length > 1 && (
-      <button
-        type="button"
-        onClick={() => {
-          const updated = [...services];
-          updated.splice(idx, 1);
-          setServices(updated);
-        }}
-        style={{ backgroundColor: "#dc3545", color: "#fff", padding: "6px 12px", border: "none", borderRadius: "4px", fontWeight: "bold", cursor: "pointer" }}
-      >
-        Remove Service
-      </button>
-    )}
-  </div>
-))}
-
-{/* Add Service Button */}
-<button
-  type="button"
-  onClick={() => setServices([...services, { name: [], description: "", amount: "" }])}
-  style={{ marginBottom: "20px", padding: "10px 20px", background: "#000", color: "#fff", borderRadius: "5px", fontWeight: "bold" }}
->
-  Add Another Service
-</button>
-
-
-
-      <div style={{ marginBottom: "20px" }}>
-        <label style={{ fontWeight: "600" }}>Payment Status</label>
+        {/* Company (required) */}
+        <RequiredLabel>Select Company</RequiredLabel>
         <select
-          value={paymentStatus}
-          onChange={(e) => setPaymentStatus(e.target.value)}
-          style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
+          value={yourCompany}
+          onChange={(e) => setYourCompany(e.target.value)}
+          aria-invalid={!!errors.yourCompany}
+          style={{
+            width: "100%",
+            padding: "10px",
+            marginBottom: "6px",
+            borderRadius: 4,
+            border: `1px solid ${errors.yourCompany ? "#d32f2f" : "#ccc"}`,
+          }}
         >
-          <option value="Pending">Pending</option>
-          <option value="Paid">Paid</option>
-          <option value="Partial">Partial</option>
+          <option value="">Select Company</option>
+          <option value="WT">WT</option>
+          <option value="WTPL">WTPL</option>
+          <option value="WTX">WTX</option>
+          <option value="WTXPL">WTXPL</option>
         </select>
-      </div>
+        {errors.yourCompany && <small style={{ color: "#d32f2f" }}>{errors.yourCompany}</small>}
 
-      <div style={{ background: "#f9f9f9", padding: "20px", borderRadius: "8px", marginBottom: "20px" }}>
-        <p>Subtotal: ₹{amount.toFixed(2)}</p>
-        <p>CGST (9%): ₹{cgst.toFixed(2)}</p>
-        <p>SGST (9%): ₹{sgst.toFixed(2)}</p>
-        <p>IGST (18%): ₹{igst.toFixed(2)}</p>
-        <p><b>Total Tax:</b> ₹{totalTax.toFixed(2)}</p>
-        <p><b>Total Amount:</b> ₹{totalAmount.toFixed(2)}</p>
-      </div>
+        <div style={{ display: "flex", gap: "20px", marginTop: 14, marginBottom: 8 }}>
+          <div style={{ flex: 1 }}>
+            <RequiredLabel>Invoice Date</RequiredLabel>
+            <input
+              type="date"
+              value={invoiceDate}
+              onChange={(e) => setInvoiceDate(e.target.value)}
+              aria-invalid={!!errors.invoiceDate}
+              style={{
+                width: "100%",
+                padding: "10px",
+                borderRadius: 4,
+                border: `1px solid ${errors.invoiceDate ? "#d32f2f" : "#ccc"}`,
+              }}
+            />
+            {errors.invoiceDate && <small style={{ color: "#d32f2f" }}>{errors.invoiceDate}</small>}
+          </div>
 
-       <button type="submit" style={{ width: "100%", padding: "15px", background: "#000000", color: "#fff", borderRadius: "5px", fontWeight: "bold", fontSize: "16px" }}>
-        Submit Invoice
-      </button>
+          <div style={{ flex: 1 }}>
+            <RequiredLabel>Title of Invoice</RequiredLabel>
+            <input
+              type="text"
+              value={invoiceTitle}
+              onChange={(e) => setInvoiceTitle(e.target.value)}
+              aria-invalid={!!errors.invoiceTitle}
+              placeholder="e.g., Creative Services – March"
+              style={{
+                width: "100%",
+                padding: "10px",
+                borderRadius: 4,
+                border: `1px solid ${errors.invoiceTitle ? "#d32f2f" : "#ccc"}`,
+              }}
+            />
+            {errors.invoiceTitle && <small style={{ color: "#d32f2f" }}>{errors.invoiceTitle}</small>}
+          </div>
+        </div>
 
+        {/* Invoice Number */}
+        <label style={{ fontWeight: "600" }}>Invoice Number</label>
+        <input type="text" value={previewInvoiceNumber} disabled style={{ width: "100%", padding: "10px", marginBottom: "20px", background: "#eee", fontWeight: "bold" }} />
+
+        {/* Client (filtered by company) */}
+        <RequiredLabel>Select Client</RequiredLabel>
+        <Select
+          isDisabled={!yourCompany}
+          options={filteredClients.map((client) => ({
+            value: client.id,
+            label: `${client.company_name ?? "—"} — ${client.client_name ?? "—"}`,
+          }))}
+          value={
+            filteredClients.find((c) => c.id === selectedClientId)
+              ? {
+                  value: selectedClientId,
+                  label: `${selectedClient?.company_name ?? "—"} — ${selectedClient?.client_name ?? "—"}`,
+                }
+              : null
+          }
+          onChange={(selected) => {
+            setSelectedClientId(selected?.value || "");
+            const client = filteredClients.find((c) => c.id === selected?.value);
+            setSelectedClient(client || null);
+            setErrors((prev) => ({ ...prev, selectedClientId: "" }));
+          }}
+          placeholder={yourCompany ? "Select Client..." : "Select company first"}
+          isSearchable
+          styles={{
+            control: (base) => ({
+              ...base,
+              padding: 2,
+              marginBottom: 6,
+              opacity: yourCompany ? 1 : 0.7,
+              borderColor: errors.selectedClientId ? "#d32f2f" : base.borderColor,
+              boxShadow: errors.selectedClientId ? "0 0 0 1px #d32f2f" : base.boxShadow,
+              "&:hover": { borderColor: errors.selectedClientId ? "#d32f2f" : base.borderColor },
+            }),
+          }}
+          noOptionsMessage={() => (yourCompany ? "No clients for this company" : "Select company first")}
+        />
+        {errors.selectedClientId && <small style={{ color: "#d32f2f" }}>{errors.selectedClientId}</small>}
+
+        <label style={{ fontWeight: "600", marginTop: "20px", display: "block" }}>Link Project</label>
+        <Select
+          options={projects}
+          value={selectedProject}
+          onChange={(selected) => setSelectedProject(selected)}
+          placeholder="Select Project..."
+          isSearchable
+          styles={{
+            control: (base) => ({
+              ...base,
+              padding: "2px",
+              marginBottom: "20px",
+            }),
+          }}
+        />
+
+        {/* Services */}
+        <h3 style={{ fontSize: "20px", fontWeight: "600", marginTop: "30px" }}>Services</h3>
+        {errors.services && <small style={{ color: "#d32f2f" }}>{errors.services}</small>}
+
+        {services.map((service, idx) => {
+          const rowErr = errors.serviceRows[idx] || {};
+          return (
+            <div key={idx} style={{ marginBottom: "25px", padding: "20px", background: "#fafafa", border: "1px solid #ddd", borderRadius: "8px" }}>
+              <div style={{ marginBottom: "15px" }}>
+                <RequiredLabel>Service Name {idx + 1}</RequiredLabel>
+                <Select
+                  isMulti
+                  options={serviceOptions}
+                  value={(service.name || []).map((n) => serviceOptions.find((opt) => opt.value === n))}
+                  onChange={(selectedOptions) => {
+                    const updated = [...services];
+                    updated[idx].name = (selectedOptions || []).map((opt) => opt.value);
+                    setServices(updated);
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      if (next.serviceRows[idx]?.name) {
+                        next.serviceRows = {
+                          ...next.serviceRows,
+                          [idx]: { ...next.serviceRows[idx], name: "" },
+                        };
+                      }
+                      return next;
+                    });
+                  }}
+                  placeholder="Select Service(s)"
+                  isSearchable
+                  styles={{
+                    control: (base) => ({
+                      ...base,
+                      minHeight: "44px",
+                      padding: "2px",
+                      borderColor: rowErr.name ? "#d32f2f" : "#ccc",
+                    }),
+                  }}
+                />
+                {rowErr.name && <small style={{ color: "#d32f2f" }}>{rowErr.name}</small>}
+              </div>
+
+              <div style={{ marginBottom: "15px" }}>
+                <RequiredLabel>Service Description</RequiredLabel>
+                <textarea
+                  value={service.description || ""}
+                  onChange={(e) => {
+                    const updated = [...services];
+                    updated[idx].description = e.target.value;
+                    setServices(updated);
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      if (next.serviceRows[idx]?.description) {
+                        next.serviceRows = { ...next.serviceRows, [idx]: { ...next.serviceRows[idx], description: "" } };
+                      }
+                      return next;
+                    });
+                  }}
+                  placeholder="Enter Service Description"
+                  style={{ width: "100%", padding: "10px", borderRadius: "5px", border: `1px solid ${rowErr.description ? "#d32f2f" : "#ccc"}` }}
+                  rows={3}
+                />
+                {rowErr.description && <small style={{ color: "#d32f2f" }}>{rowErr.description}</small>}
+              </div>
+
+              <div style={{ marginBottom: "15px" }}>
+                <RequiredLabel>Service Amount ₹</RequiredLabel>
+                <input
+                  type="number"
+                  value={service.amount ?? ""}
+                  onChange={(e) => {
+                    const updated = [...services];
+                    updated[idx].amount = e.target.value;
+                    setServices(updated);
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      if (next.serviceRows[idx]?.amount) {
+                        next.serviceRows = { ...next.serviceRows, [idx]: { ...next.serviceRows[idx], amount: "" } };
+                      }
+                      return next;
+                    });
+                  }}
+                  placeholder="Enter Amount"
+                  style={{ width: "100%", padding: "10px", borderRadius: "5px", border: `1px solid ${rowErr.amount ? "#d32f2f" : "#ccc"}` }}
+                />
+                {rowErr.amount && <small style={{ color: "#d32f2f" }}>{rowErr.amount}</small>}
+              </div>
+
+              {services.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updated = [...services];
+                    updated.splice(idx, 1);
+                    setServices(updated);
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      const { [idx]: _, ...rest } = next.serviceRows;
+                      next.serviceRows = rest;
+                      return next;
+                    });
+                  }}
+                  style={{ backgroundColor: "#dc3545", color: "#fff", padding: "6px 12px", border: "none", borderRadius: "4px", fontWeight: "bold", cursor: "pointer" }}
+                >
+                  Remove Service
+                </button>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Add Service Button */}
+        <button
+          type="button"
+          onClick={() => setServices([...services, { name: [], description: "", amount: "" }])}
+          style={{ marginBottom: "20px", padding: "10px 20px", background: "#000", color: "#fff", borderRadius: "5px", fontWeight: "bold" }}
+        >
+          {services.length === 0 ? "Add Service" : "Add Another Service"}
+        </button>
+
+        {/* Payment Status */}
+        <div style={{ marginBottom: "20px" }}>
+          <label style={{ fontWeight: "600" }}>Payment Status</label>
+          <select
+            value={paymentStatus}
+            onChange={(e) => setPaymentStatus(e.target.value)}
+            style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
+          >
+            <option value="Pending">Pending</option>
+            <option value="Paid">Paid</option>
+            <option value="Partial">Partial</option>
+          </select>
+        </div>
+
+        {/* GST Payment Status */}
+        <div style={{ marginBottom: "20px" }}>
+          <label style={{ fontWeight: "600" }}>GST Payment Status</label>
+          <select
+            value={gstPaymentStatus}
+            onChange={(e) => setGstPaymentStatus(e.target.value)}
+            disabled={!(selectedClient && selectedClient.country === "India")}
+            style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc", background: !(selectedClient && selectedClient.country === "India") ? "#f3f4f6" : "#fff" }}
+            title={!(selectedClient && selectedClient.country === "India") ? "GST not applicable for this client" : ""}
+          >
+            <option value="Pending">Pending</option>
+            <option value="Paid">Paid</option>
+            <option value="Partial">Partial</option>
+          </select>
+          {!(selectedClient && selectedClient.country === "India") && (
+            <small style={{ color: "#666" }}>
+              GST not applicable (international client) — saved as "NA".
+            </small>
+          )}
+        </div>
+
+        {/* Totals — show only applicable GST lines */}
+        <div style={{ background: "#f9f9f9", padding: "20px", borderRadius: "8px", marginBottom: "20px" }}>
+          <p>Subtotal: ₹{formatAmount(subtotal)}</p>
+
+          {/* Only render non-zero GST components */}
+          {cgst > 0 && <p>CGST ({cgstRate}%): ₹{formatAmount(cgst)}</p>}
+          {sgst > 0 && <p>SGST ({sgstRate}%): ₹{formatAmount(sgst)}</p>}
+          {igst > 0 && <p>IGST ({igstRate}%): ₹{formatAmount(igst)}</p>}
+
+          <p><b>Total Tax:</b> ₹{formatAmount(tax_amount)}</p>
+          <p><b>Total Amount:</b> ₹{formatAmount(grand_total)}</p>
+        </div>
+
+        {/* Progress Box */}
+        {isGeneratingPDF && (
+          <div style={{ background: "#e3f2fd", padding: "20px", borderRadius: "8px", marginBottom: "20px", border: "1px solid #2196f3" }}>
+            <div style={{ display: "flex", alignItems: "center", marginBottom: "10px" }}>
+              <div style={{ width: "20px", height: "20px", border: "2px solid #2196f3", borderTop: "2px solid transparent", borderRadius: "50%", animation: "spin 1s linear infinite", marginRight: "10px" }}></div>
+              <span style={{ fontWeight: "bold", color: "#1976d2" }}>{pdfProgress.message}</span>
+            </div>
+            <div style={{ width: "100%", height: "8px", backgroundColor: "#e0e0e0", borderRadius: "4px", overflow: "hidden" }}>
+              <div style={{ width: `${pdfProgress.progress}%`, height: "100%", backgroundColor: "#2196f3", transition: "width 0.3s ease" }}></div>
+            </div>
+            <div style={{ textAlign: "center", marginTop: "8px", fontSize: "12px", color: "#666" }}>
+              {pdfProgress.progress}% Complete
+            </div>
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={isGeneratingPDF}
+          style={{
+            width: "100%",
+            padding: "15px",
+            background: isGeneratingPDF ? "#cccccc" : "#000000",
+            color: "#fff",
+            borderRadius: "5px",
+            fontWeight: "bold",
+            fontSize: "16px",
+            cursor: isGeneratingPDF ? "not-allowed" : "pointer",
+            opacity: isGeneratingPDF ? 0.7 : 1,
+          }}
+        >
+          {isGeneratingPDF ? "Processing..." : "Submit Invoice & Generate PDFs"}
+        </button>
+
+        <style jsx>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
       </form>
     </div>
   );

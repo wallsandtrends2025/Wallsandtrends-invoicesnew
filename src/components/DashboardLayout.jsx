@@ -7,6 +7,7 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
 
   // Lock/unlock background scroll when mobile menu is open
   useEffect(() => {
@@ -31,12 +32,20 @@ export default function DashboardLayout() {
   // Auto-close mobile on route change
   useEffect(() => setMobileOpen(false), [location.pathname]);
 
+  // Watch scroll to toggle header shadow
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 2);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   const handleLogout = async () => {
     await signOut(auth);
     navigate("/login");
   };
 
-  // Icons (black on white)
+  // Icons
   const MenuIcon = () => (
     <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M4 7h16M4 12h16M4 17h16" stroke="black" strokeWidth="2.5" strokeLinecap="round" />
@@ -50,10 +59,16 @@ export default function DashboardLayout() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
-      {/* Header (white, logo unchanged) */}
-      <header className="sticky top-0 z-40 bg-white">
+      {/* Header — fixed, high z-index, white background */}
+      <header
+        className={[
+          "fixed top-0 left-0 right-0  z-[9999]", // full width + high z-index
+          "bg-[#ffffff]", // solid white background
+          "border-b border-slate-200",
+          scrolled ? "shadow-sm" : "shadow-none",
+        ].join(" ")}
+      >
         <div className="h-[100px] min-[1025px]:h-16 max-w-7xl mx-auto px-4 md:px-6 flex items-center justify-between overflow-visible">
-          {/* ✅ Logo exactly same size as before */}
           <div className="invoices-logo select-none">
             <img
               src="/invoice-logo.png"
@@ -63,35 +78,33 @@ export default function DashboardLayout() {
             />
           </div>
 
-          {/* Desktop nav (≥1025px) with spacing between items */}
+          {/* Desktop nav */}
           <nav className="hidden min-[1025px]:flex items-center space-x-6 xl:space-x-10 2xl:space-x-12 relative z-[70]">
             <NavLink to="/dashboard/home">Home</NavLink>
 
-            {/* Project Management */}
-            <Dropdown label="Project Management">
-              <DropdownItem to="/dashboard/add-project">Add Project</DropdownItem>
-              <DropdownItem to="/dashboard/all-projects">All Projects</DropdownItem>
-            </Dropdown>
-
-            {/* Client Registration */}
             <Dropdown label="Client Registration">
               <DropdownItem to="/dashboard/add-client">Register Client</DropdownItem>
               <DropdownItem to="/dashboard/all-clients">Client List</DropdownItem>
             </Dropdown>
 
-            {/* Invoice Generation */}
+            <Dropdown label="Project Management">
+              <DropdownItem to="/dashboard/add-project">Add Project</DropdownItem>
+              <DropdownItem to="/dashboard/all-projects">All Projects</DropdownItem>
+            </Dropdown>
+
+            <Dropdown label="Proforma Generation">
+              <DropdownItem to="/dashboard/create-quotation">Create Proforma</DropdownItem>
+              <DropdownItem to="/dashboard/quotations">Proformas List</DropdownItem>
+            </Dropdown>
+
             <Dropdown label="Invoice Generation">
               <DropdownItem to="/dashboard/create-invoice">Create Invoice</DropdownItem>
               <DropdownItem to="/dashboard/all-invoices">Invoice List</DropdownItem>
             </Dropdown>
 
-            {/* Quotation Generation */}
-            <Dropdown label="Quotation Generation">
-              <DropdownItem to="/dashboard/create-quotation">Create Quotation</DropdownItem>
-              <DropdownItem to="/dashboard/quotations">Quotations List</DropdownItem>
-            </Dropdown>
-
             <NavLink to="/dashboard/invoice-summary">Invoice Summary</NavLink>
+            <NavLink to="/dashboard/pdf-manager">PDF Manager</NavLink>
+            <NavLink to="/dashboard/audit-manager">Audit Manager</NavLink>
 
             <button
               onClick={handleLogout}
@@ -101,7 +114,7 @@ export default function DashboardLayout() {
             </button>
           </nav>
 
-          {/* Mobile/Tablet toggle (0–1024px). Hidden on ≥1025px */}
+          {/* Mobile menu button */}
           <button
             onClick={() => setMobileOpen(true)}
             className={`min-[1025px]:hidden inline-flex items-center justify-center w-10 h-10 rounded-md hover:bg-slate-100 ${mobileOpen ? "hidden" : ""}`}
@@ -113,13 +126,11 @@ export default function DashboardLayout() {
         </div>
       </header>
 
-      {/* Mobile FULLSCREEN menu (0–1024px) */}
+      {/* Mobile FULLSCREEN menu */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 min-[1025px]:hidden">
-          {/* One full-screen panel (no separate overlay to avoid gaps) */}
+        <div className="fixed inset-0 z-[10000] min-[1025px]:hidden">
           <div className="fixed inset-0 bg-[#ffffff] text-slate-800 overflow-y-auto menu-block">
             <div className="max-w-7xl mx-auto px-5 pt-4 pb-8">
-              {/* Panel header */}
               <div className="h-12 flex items-center justify-between">
                 <span className="text-[15px] font-semibold tracking-wide text-slate-700">Menu</span>
                 <button
@@ -131,7 +142,7 @@ export default function DashboardLayout() {
                 </button>
               </div>
 
-              {/* Nav list */}
+              {/* Mobile Nav */}
               <nav className="mt-2">
                 <Link className="block w-full px-3 py-3 rounded-lg text-[15px] font-medium hover:bg-slate-50" to="/dashboard/home">
                   Home
@@ -161,8 +172,8 @@ export default function DashboardLayout() {
                 <MobileSection
                   title="Quotation Generation"
                   items={[
-                    { label: "Create Quotation", to: "/dashboard/create-quotation" },
-                    { label: "Quotations List", to: "/dashboard/quotations" },
+                    { label: "Create Proforma", to: "/dashboard/create-quotation" },
+                    { label: "Proformas List", to: "/dashboard/quotations" },
                   ]}
                 />
 
@@ -170,9 +181,17 @@ export default function DashboardLayout() {
                   Invoice Summary
                 </Link>
 
+                <Link className="block w-full mt-1 px-3 py-3 rounded-lg text-[15px] font-medium hover:bg-slate-50" to="/dashboard/pdf-manager">
+                  PDF Manager
+                </Link>
+
+                <Link className="block w-full mt-1 px-3 py-3 rounded-lg text-[15px] font-medium hover:bg-slate-50" to="/dashboard/audit-manager">
+                  Audit Manager
+                </Link>
+
                 <button
                   onClick={handleLogout}
-                  className="logout mt-6 w-full inline-flex items-center justify-center rounded-lg px-4 py-3 text-sm font-semibold text-white bg-gradient-to-b from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700"
+                  className="logout mt-6 w-full inline-flex items-center justify-center rounded-lg px-4 py-3 text-sm font-semibold text-white bg-gradient-to-b from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700"
                 >
                   Logout
                 </button>
@@ -182,8 +201,8 @@ export default function DashboardLayout() {
         </div>
       )}
 
-      {/* Page content */}
-      <main className="flex-1">
+      {/* Page content — add top padding to clear the fixed header */}
+      <main className="flex-1 pt-[135px] min-[1025px]:pt-16">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-6">
           <Outlet />
         </div>
@@ -205,37 +224,32 @@ function NavLink({ to, children }) {
   );
 }
 
-/**
- * Desktop dropdown – overlap-safe, items 100% width, with inner gap
- */
 function Dropdown({ label, children }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <div className="relative group">
-      {/* trigger */}
+    <div
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
       <button
-        className="inline-flex items-center gap-1 px-3 py-2 rounded-md text-slate-700 hover:bg-slate-50 focus:outline-none"
         type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="inline-flex items-center gap-1 px-3 py-2 rounded-md text-slate-700 hover:bg-slate-50 focus:outline-none"
+        onClick={() => setOpen((prev) => !prev)}
       >
         {label} ▾
       </button>
 
-      {/* menu wrapper (desktop only) */}
-      <div
-        className="
-          absolute left-0 top-full mt-0 hidden group-hover:block z-[100] min-w-full
-          pointer-events-none group-hover:pointer-events-auto
-          "
-      >
-        {/* hover bridge */}
-        <div className="relative before:content-[''] before:absolute before:-top-2 before:left-0 before:right-0 before:h-2">
+      {open && (
+        <div className="absolute left-0 top-full mt-0 z-[100] min-w-full">
           <div className="bg-white rounded-xl shadow-xl py-1">
-            {/* 👇 small gap between dropdown items */}
-            <div className="flex flex-col w-full gap-1">
-              {children}
-            </div>
+            <div className="flex flex-col w-full gap-1">{children}</div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -251,7 +265,6 @@ function DropdownItem({ to, children }) {
   );
 }
 
-/** 30px chevron icon */
 function Chevron30({ open }) {
   return (
     <svg
@@ -266,9 +279,9 @@ function Chevron30({ open }) {
   );
 }
 
-/** Mobile accordion (0–1024px) */
 function MobileSection({ title, items }) {
   const [open, setOpen] = useState(false);
+
   return (
     <div className="mt-1">
       <button
@@ -280,19 +293,20 @@ function MobileSection({ title, items }) {
         <Chevron30 open={open} />
       </button>
 
-      <div className={`grid transition-[grid-template-rows] duration-200 ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
-        <div className="overflow-hidden">
-          <div className="py-1">
-            {items.map((it) => (
-              <Link
-                key={it.to}
-                to={it.to}
-                className="block w-full px-5 py-2.5 rounded-lg text-slate-700 hover:bg-slate-50"
-              >
-                {it.label}
-              </Link>
-            ))}
-          </div>
+      <div
+        className={`overflow-hidden transition-[max-height] duration-300 ease-in-out`}
+        style={{ maxHeight: open ? "1000px" : "0px" }}
+      >
+        <div className="py-1 flex flex-col gap-1">
+          {items.map((it) => (
+            <Link
+              key={it.to}
+              to={it.to}
+              className="block w-full px-5 py-2.5 rounded-lg text-slate-700 hover:bg-slate-50"
+            >
+              {it.label}
+            </Link>
+          ))}
         </div>
       </div>
     </div>

@@ -1,26 +1,29 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import Select from 'react-select';
-import { db } from '../firebase';
+// src/pages/EditProject.jsx
+import React, { useEffect, useMemo, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import Select from "react-select";
+import { db } from "../firebase";
 import {
   doc,
   getDoc,
   updateDoc,
   collection,
   getDocs,
-} from 'firebase/firestore';
+} from "firebase/firestore";
 
 export default function EditProject() {
   const { id } = useParams();
   const navigate = useNavigate();
 
+  const [loading, setLoading] = useState(true);
   const [project, setProject] = useState(null);
+
+  // Dropdown data
   const [clients, setClients] = useState([]);
   const [invoiceOptions, setInvoiceOptions] = useState([]);
   const [quotationOptions, setQuotationOptions] = useState([]);
-  const [loading, setLoading] = useState(true);
 
-  // Service options used for Work Type dropdown (same as your other pages)
+  // ----- Service options (same as AddProject) -----
   const serviceOptions = [
     { label: "Lyrical Videos", value: "Lyrical Videos" },
     { label: "Posters", value: "Posters" },
@@ -46,49 +49,64 @@ export default function EditProject() {
     { label: "Performance Marketing", value: "Performance Marketing" },
     { label: "Web Development", value: "Web Development" },
     { label: "Ad Film", value: "Ad Film" },
-    { label: "\u2060Brand Film", value: "\u2060Brand Film" },
-    { label: "\u2060\u2060Corporate Film", value: "\u2060Corporate Film" },
-    { label: "\u2060Teaser + Trailer + Business cut", value: "\u2060Teaser + Trailer + Business cut" },
+    { label: "⁠Brand Film", value: "⁠Brand Film" },
+    { label: "⁠⁠Corporate Film", value: "⁠Corporate Film" },
+    { label: "⁠Teaser + Trailer + Business cut", value: "⁠Teaser + Trailer + Business cut" },
   ];
+
+  // ----- POC options by company GROUP (same as AddProject) -----
+  const pocByGroup = {
+    WT_WTPL: ["Abhilash", "Veda", "Sai"],
+    WTX_WTXPL: ["Rohit", "Mohit", "Kamya", "Varshini", "Anoushka", "Vineel", "Shravya"],
+  };
+
+  const companyToGroup = (c) => (c === "WT" || c === "WTPL" ? "WT_WTPL" : "WTX_WTXPL");
+
+  const pocOptions = useMemo(() => {
+    const groupKey = companyToGroup(project?.company);
+    return (pocByGroup[groupKey] || []).map((p) => ({ label: p, value: p }));
+  }, [project?.company]);
+
+  const isWTGroup = (c) => ["WT", "WTPL"].includes(c);
+  const isWTXGroup = (c) => ["WTX", "WTXPL"].includes(c);
 
   useEffect(() => {
     const fetchAll = async () => {
       try {
         // Load this project
-        const projectRef = doc(db, 'projects', id);
+        const projectRef = doc(db, "projects", id);
         const projectSnap = await getDoc(projectRef);
         if (!projectSnap.exists()) {
-          alert('Project not found!');
-          return navigate('/dashboard/all-projects');
+          alert("Project not found!");
+          return navigate("/dashboard/all-projects");
         }
         const projectData = projectSnap.data();
 
         // Load clients, invoices, quotations
         const [clientsSnap, invoicesSnap, quotationsSnap] = await Promise.all([
-          getDocs(collection(db, 'clients')),
-          getDocs(collection(db, 'invoices')),
-          getDocs(collection(db, 'quotations')),
+          getDocs(collection(db, "clients")),
+          getDocs(collection(db, "invoices")),
+          getDocs(collection(db, "quotations")),
         ]);
 
-        // Clients list
-        const clientsData = clientsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Clients list for dropdown
+        const clientsData = clientsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
         setClients(clientsData);
 
-        // Only invoices/quotations that belong to THIS project (by project_id)
+        // Only this project's invoices/quotations by project_id
         const invoicesForProject = invoicesSnap.docs
-          .map(d => ({ id: d.id, ...d.data() }))
-          .filter(inv => inv.project_id === id);
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((inv) => inv.project_id === id);
 
         const quotationsForProject = quotationsSnap.docs
-          .map(d => ({ id: d.id, ...d.data() }))
-          .filter(q => q.project_id === id);
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((q) => q.project_id === id);
 
-        // Build options that display invoice_id / quotation_id as labels
-        const invOptions = invoicesForProject.map(i => ({
+        const invOptions = invoicesForProject.map((i) => ({
           value: i.id,
           label: i.invoice_id || i.id,
         }));
-        const qtnOptions = quotationsForProject.map(q => ({
+        const qtnOptions = quotationsForProject.map((q) => ({
           value: q.id,
           label: q.quotation_id || q.id,
         }));
@@ -96,46 +114,49 @@ export default function EditProject() {
         setInvoiceOptions(invOptions);
         setQuotationOptions(qtnOptions);
 
-        // Preselect invoice/quotation values from project doc if stored
-        const preselectedInvoices =
-          Array.isArray(projectData.invoiceIds)
-            ? projectData.invoiceIds
-                .map(invId => invOptions.find(o => o.value === invId))
-                .filter(Boolean)
-            : [];
-
-        const preselectedQuotations =
-          Array.isArray(projectData.quotationIds)
-            ? projectData.quotationIds
-                .map(qId => qtnOptions.find(o => o.value === qId))
-                .filter(Boolean)
-            : [];
-
-        // Preselect client field
+        // Preselect client
         const clientOption =
           clientsData
-            .map(c => ({
+            .map((c) => ({
               value: c.id,
-              label:
-                c.name ||
-                c.companyName ||
-                c.client_name ||
-                c.company_name,
+              label: c.name || c.companyName || c.client_name || c.company_name || c.id,
             }))
-            .find(opt => opt.value === projectData.clientId) || null;
+            .find((opt) => opt.value === projectData.clientId) || null;
 
+        // Preselect invoices/quotations
+        const preselectedInvoices = Array.isArray(projectData.invoiceIds)
+          ? projectData.invoiceIds.map((invId) => invOptions.find((o) => o.value === invId)).filter(Boolean)
+          : [];
+
+        const preselectedQuotations = Array.isArray(projectData.quotationIds)
+          ? projectData.quotationIds.map((qId) => qtnOptions.find((o) => o.value === qId)).filter(Boolean)
+          : [];
+
+        // Preselect services
+        const preselectedServices = Array.isArray(projectData.services)
+          ? projectData.services
+              .map((sv) => serviceOptions.find((o) => o.value === sv))
+              .filter(Boolean)
+          : [];
+
+        // Build edit state
         setProject({
           id: projectSnap.id,
-          ...projectData,
-          clientId: clientOption,
-          invoiceIds: preselectedInvoices,     // react-select option objects
-          quotationIds: preselectedQuotations, // react-select option objects
+          projectName: projectData.projectName || "",
+          company: projectData.company || "WT",
+          clientId: clientOption, // react-select option
+          poc: projectData.poc || "",
+          movieName: projectData.movieName || "",
+          brandName: projectData.brandName || "",
+          services: preselectedServices, // react-select options
+          invoiceIds: preselectedInvoices, // react-select options
+          quotationIds: preselectedQuotations, // react-select options
         });
 
         setLoading(false);
-      } catch (error) {
-        console.error('Error loading project:', error);
-        alert('Failed to load project.');
+      } catch (err) {
+        console.error("Error loading project:", err);
+        alert("Failed to load project.");
       }
     };
 
@@ -145,30 +166,46 @@ export default function EditProject() {
   const handleUpdate = async (e) => {
     e.preventDefault();
 
+    if (!project.projectName || !project.clientId || !project.company || !project.poc) {
+      alert("Project Name, Client, Company, and POC are required.");
+      return;
+    }
+
+    // Persist exactly what AddProject saves (+ optional invoice/quotation links)
+    const isWT = isWTGroup(project.company);
+    const isWTX = isWTXGroup(project.company);
+
     const updated = {
-      projectName: project.projectName || '',
-      description: project.description || '',
-      poc: project.poc || '',
-      movieName: project.movieName || '',
-      // Work Type saved as string from the dropdown
-      workType: project.workType || '',
-      paymentStatus: project.paymentStatus || 'Pending',
-      clientId: project.clientId?.value || '',
-      // Save selected IDs back to Firestore
-      invoiceIds: Array.isArray(project.invoiceIds) ? project.invoiceIds.map(i => i?.value) : [],
-      quotationIds: Array.isArray(project.quotationIds) ? project.quotationIds.map(q => q?.value) : [],
+      projectName: project.projectName,
+      clientId: project.clientId?.value || "",
+      company: project.company,
+      movieName: isWT ? (project.movieName || "") : "",
+      brandName: isWTX ? (project.brandName || "") : "",
+      poc: project.poc || "",
+      services: Array.isArray(project.services) ? project.services.map((s) => s.value) : [],
+      // optional associations:
+      invoiceIds: Array.isArray(project.invoiceIds) ? project.invoiceIds.map((i) => i?.value) : [],
+      quotationIds: Array.isArray(project.quotationIds) ? project.quotationIds.map((q) => q?.value) : [],
     };
 
     try {
-      await updateDoc(doc(db, 'projects', id), updated);
-      navigate('/dashboard/all-projects');
+      await updateDoc(doc(db, "projects", id), updated);
+      navigate("/dashboard/all-projects");
     } catch (error) {
-      console.error('Error updating project:', error.message, error);
-      alert('Update failed.');
+      console.error("Error updating project:", error);
+      alert("Update failed.");
     }
   };
 
-  if (loading || !project) return <p className="p-6 text-center text-gray-700">Loading project...</p>;
+  if (loading || !project)
+    return <p className="p-6 text-center text-gray-300">Loading project...</p>;
+
+  const companyOptions = [
+    { label: "WT", value: "WT" },
+    { label: "WTPL", value: "WTPL" },
+    { label: "WTX", value: "WTX" },
+    { label: "WTXPL", value: "WTXPL" },
+  ];
 
   return (
     <div className="min-h-screen bg-black flex justify-center items-start p-6">
@@ -177,6 +214,42 @@ export default function EditProject() {
         className="bg-gray-900 text-white rounded-xl shadow-xl p-8 w-full max-w-3xl"
       >
         <h2 className="text-3xl font-bold text-center mb-8">Edit Project</h2>
+
+        {/* Company */}
+        <div className="mb-5">
+          <label className="block text-sm font-medium mb-1">Company</label>
+          <Select
+            options={companyOptions}
+            value={companyOptions.find((o) => o.value === project.company) || null}
+            onChange={(opt) => {
+              // when changing company, reset POC and conditional fields
+              const nextCompany = opt?.value || "WT";
+              setProject((prev) => ({
+                ...prev,
+                company: nextCompany,
+                poc: "", // force re-pick valid POC for this company group
+                movieName: isWTGroup(nextCompany) ? prev.movieName : "",
+                brandName: isWTXGroup(nextCompany) ? prev.brandName : "",
+              }));
+            }}
+            styles={selectStyles}
+          />
+        </div>
+
+        {/* Client */}
+        <div className="mb-5">
+          <label className="block text-sm font-medium mb-1">Client</label>
+          <Select
+            options={clients.map((c) => ({
+              value: c.id,
+              label: c.name || c.companyName || c.client_name || c.company_name || c.id,
+            }))}
+            value={project.clientId}
+            onChange={(selected) => setProject({ ...project, clientId: selected })}
+            placeholder="Select client"
+            styles={selectStyles}
+          />
+        </div>
 
         {/* Project Name */}
         <div className="mb-5">
@@ -190,115 +263,95 @@ export default function EditProject() {
           />
         </div>
 
-        {/* Description */}
-        <div className="mb-5">
-          <label className="block text-sm font-medium mb-1">Description</label>
-          <textarea
-            value={project.description}
-            onChange={(e) => setProject({ ...project, description: e.target.value })}
-            rows={3}
-            className="w-full p-3 rounded bg-gray-800 border border-gray-700 text-white"
-            required
-          />
-        </div>
+        {/* Movie Name (WT/WTPL) */}
+        {isWTGroup(project.company) && (
+          <div className="mb-5">
+            <label className="block text-sm font-medium mb-1">Movie Name</label>
+            <input
+              type="text"
+              value={project.movieName}
+              onChange={(e) => setProject({ ...project, movieName: e.target.value })}
+              className="w-full p-3 rounded bg-gray-800 border border-gray-700 text-white"
+            />
+          </div>
+        )}
 
-        {/* POC */}
+        {/* Brand Name (WTX/WTXPL) */}
+        {isWTXGroup(project.company) && (
+          <div className="mb-5">
+            <label className="block text-sm font-medium mb-1">Brand Name</label>
+            <input
+              type="text"
+              value={project.brandName}
+              onChange={(e) => setProject({ ...project, brandName: e.target.value })}
+              className="w-full p-3 rounded bg-gray-800 border border-gray-700 text-white"
+            />
+          </div>
+        )}
+
+        {/* POC (dropdown based on company group) */}
         <div className="mb-5">
           <label className="block text-sm font-medium mb-1">POC</label>
-          <input
-            type="text"
-            value={project.poc || ''}
-            onChange={(e) => setProject({ ...project, poc: e.target.value })}
-            className="w-full p-3 rounded bg-gray-800 border border-gray-700 text-white"
-          />
-        </div>
-
-        {/* Movie Name */}
-        <div className="mb-5">
-          <label className="block text-sm font-medium mb-1">Movie Name</label>
-          <input
-            type="text"
-            value={project.movieName || ''}
-            onChange={(e) => setProject({ ...project, movieName: e.target.value })}
-            className="w-full p-3 rounded bg-gray-800 border border-gray-700 text-white"
-          />
-        </div>
-
-        {/* Work Type (Service Dropdown - Single Select) */}
-        <div className="mb-5">
-          <label className="block text-sm font-medium mb-1">Work Type</label>
           <Select
-            options={serviceOptions}
-            value={serviceOptions.find(opt => opt.value === project.workType) || null}
+            options={pocOptions}
+            value={project.poc ? { label: project.poc, value: project.poc } : null}
             onChange={(selected) =>
-              setProject({ ...project, workType: selected ? selected.value : '' })
+              setProject({ ...project, poc: selected ? selected.value : "" })
             }
-            placeholder="Select work type"
+            placeholder="Select POC"
             styles={selectStyles}
             isClearable
           />
         </div>
 
-        {/* Payment Status */}
-        <div className="mb-5">
-          <label className="block text-sm font-medium mb-1">Payment Status</label>
-          <select
-            value={project.paymentStatus || 'Pending'}
-            onChange={(e) => setProject({ ...project, paymentStatus: e.target.value })}
-            className="w-full p-3 rounded bg-gray-800 border border-gray-700 text-white"
-          >
-            <option value="Pending">Pending</option>
-            <option value="Partial">Partial</option>
-            <option value="Paid">Paid</option>
-          </select>
-        </div>
-
-        {/* Client */}
-        <div className="mb-5">
-          <label className="block text-sm font-medium mb-1">Client</label>
+        {/* Services (multi-select) */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium mb-1">Services</label>
           <Select
-            options={clients.map(c => ({
-              value: c.id,
-              label: c.name || c.companyName || c.client_name || c.company_name
-            }))}
-            value={project.clientId}
-            onChange={(selected) => setProject({ ...project, clientId: selected })}
-            placeholder="Select client"
+            isMulti
+            options={serviceOptions}
+            value={project.services}
+            onChange={(selected) => setProject({ ...project, services: selected || [] })}
+            placeholder="Select services"
             styles={selectStyles}
           />
         </div>
 
-        {/* Invoices (only this project's invoices; labels show invoice_id) */}
+        {/* Invoices (optional linking) */}
         <div className="mb-5">
           <label className="block text-sm font-medium mb-1">Invoices</label>
           <Select
             isMulti
             options={invoiceOptions}
             value={project.invoiceIds}
-            onChange={(selected) => setProject({ ...project, invoiceIds: selected })}
+            onChange={(selected) => setProject({ ...project, invoiceIds: selected || [] })}
             styles={selectStyles}
-            placeholder={invoiceOptions.length ? 'Select invoices' : 'No invoices for this project'}
+            placeholder={
+              invoiceOptions.length ? "Select invoices" : "No invoices for this project"
+            }
             isDisabled={!invoiceOptions.length}
           />
         </div>
 
-        {/* Quotations (only this project's quotations; labels show quotation_id) */}
+        {/* Quotations (optional linking) */}
         <div className="mb-8">
           <label className="block text-sm font-medium mb-1">Quotations</label>
           <Select
             isMulti
             options={quotationOptions}
             value={project.quotationIds}
-            onChange={(selected) => setProject({ ...project, quotationIds: selected })}
+            onChange={(selected) => setProject({ ...project, quotationIds: selected || [] })}
             styles={selectStyles}
-            placeholder={quotationOptions.length ? 'Select quotations' : 'No quotations for this project'}
+            placeholder={
+              quotationOptions.length ? "Select quotations" : "No quotations for this project"
+            }
             isDisabled={!quotationOptions.length}
           />
         </div>
 
         <button
           type="submit"
-          className=" update-project-btn mt-6 mb-4  bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold tracking-wide py-3 rounded-xl shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 ease-in-out"
+          className="update-project-btn mt-6 mb-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold tracking-wide py-3 rounded-xl shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 ease-in-out"
         >
           Update Project
         </button>
@@ -307,22 +360,22 @@ export default function EditProject() {
   );
 }
 
-// 🎨 Custom dark mode styles for react-select
+// 🎨 Dark mode styles for react-select (matches your form)
 const selectStyles = {
   control: (base) => ({
     ...base,
-    backgroundColor: '#1f2937',
-    borderColor: '#374151',
-    color: '#fff',
+    backgroundColor: "#1f2937",
+    borderColor: "#374151",
+    color: "#fff",
   }),
-  input: (base) => ({ ...base, color: 'white' }),
-  singleValue: (base) => ({ ...base, color: 'white' }),
-  multiValue: (base) => ({ ...base, backgroundColor: '#374151' }),
-  multiValueLabel: (base) => ({ ...base, color: 'white' }),
-  menu: (base) => ({ ...base, backgroundColor: '#111827' }),
+  input: (base) => ({ ...base, color: "white" }),
+  singleValue: (base) => ({ ...base, color: "white" }),
+  multiValue: (base) => ({ ...base, backgroundColor: "#374151" }),
+  multiValueLabel: (base) => ({ ...base, color: "white" }),
+  menu: (base) => ({ ...base, backgroundColor: "#111827" }),
   option: (base, state) => ({
     ...base,
-    backgroundColor: state.isFocused ? '#374151' : '#111827',
-    color: 'white',
+    backgroundColor: state.isFocused ? "#374151" : "#111827",
+    color: "white",
   }),
 };

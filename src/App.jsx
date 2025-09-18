@@ -24,6 +24,10 @@ import AddProject from "./components/AddProject";
 import AllProjects from "./components/AllProjects";
 import EditProject from "./components/EditProject";
 import PreviewProject from "./components/PreviewProject";
+import PDFManager from "./components/PDFManager";
+import PDFViewer from "./components/PDFViewer";
+import AuditManager from "./components/AuditManager";
+
 
 function ProtectedRoute({ children }) {
   const [user, setUser] = useState(null);
@@ -78,6 +82,11 @@ export default function App() {
         <Route path="all-projects" element={<AllProjects />} />
         <Route path="edit-project/:id" element={<EditProject />} />
         <Route path="project-preview/:id" element={<PreviewProject />} />
+
+        <Route path="pdf-manager" element={<PDFManager />} />
+        <Route path="pdf-viewer/:pdfId" element={<PDFViewer />} />
+        <Route path="audit-manager" element={<AuditManager />} />
+
       </Route>
 
       <Route path="*" element={<Navigate to="/login" />} />

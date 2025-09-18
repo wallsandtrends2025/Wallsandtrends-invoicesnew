@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+// src/pages/AddProject.jsx
+import React, { useEffect, useMemo, useState } from "react";
 import { collection, addDoc, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import Select from "react-select";
@@ -12,9 +13,60 @@ export default function AddProject() {
   const [brandName, setBrandName] = useState("");
   const [poc, setPoc] = useState("");
   const [selectedServices, setSelectedServices] = useState([]);
-  const [clients, setClients] = useState([]);
+  const [clientsData, setClientsData] = useState({});
   const navigate = useNavigate();
 
+  // ----- POC options by company GROUP -----
+  const WT_WTPL_POCs = [
+    "Suryadevara Veda sai Krishna WT120",
+    "Koduru Abhilash Reddy WT146",
+    "Sajja Seshasai WT131",
+  ];
+
+  const WTX_WTXPL_POCs = [
+    "Lingareddy Navya WT122",
+    "Rohith Gali WT259",
+    "Mohit Vamsi WT274",
+    "Anouska Panda WT286",
+    "Kamya Mogulagani WT262",
+    "Varshini Suragowni WT263",
+    "Addanki Sai Durga WT284",
+    "Sharvana Sandhya WT266",
+    "Vineel Raj WT321",
+  ];
+
+  // Format POC as "Name - WT###"
+  const formatPoc = (entry) => {
+    const parts = entry.split(" ");
+    const code = parts.pop(); // last part = WT###
+    const name = parts.join(" ");
+    return `${name} - ${code}`;
+  };
+
+  const pocByGroup = {
+    WT_WTPL: WT_WTPL_POCs.map(formatPoc),
+    WTX_WTXPL: WTX_WTXPL_POCs.map(formatPoc),
+  };
+
+  const companyToGroup = (c) =>
+    c === "WT" || c === "WTPL" ? "WT_WTPL" : "WTX_WTXPL";
+
+  const currentPocOptions = useMemo(() => {
+    const list = pocByGroup[companyToGroup(company)] || [];
+    return list.map((label) => ({ label, value: label }));
+  }, [company]);
+
+  const mapShortPocToFull = (shortName, comp) => {
+    if (!shortName) return "";
+    const list = pocByGroup[companyToGroup(comp)] || [];
+    const lower = shortName.toLowerCase().trim();
+    let found = list.find((lbl) => lbl.toLowerCase().startsWith(lower));
+    if (found) return found;
+    found = list.find((lbl) => lbl.toLowerCase().includes(lower));
+    return found || shortName;
+  };
+
+  // ----- Services -----
   const serviceOptions = [
     { label: "Lyrical Videos", value: "Lyrical Videos" },
     { label: "Posters", value: "Posters" },
@@ -41,28 +93,63 @@ export default function AddProject() {
     { label: "Web Development", value: "Web Development" },
     { label: "Ad Film", value: "Ad Film" },
     { label: "⁠Brand Film", value: "⁠Brand Film" },
-    { label: "⁠⁠Corporate Film", value: "⁠Corporate Film" },
+    { label: "⁠Corporate Film", value: "⁠Corporate Film" },
     { label: "⁠Teaser + Trailer + Business cut", value: "⁠Teaser + Trailer + Business cut" },
   ];
 
+  // ----- Load all clients once -----
   useEffect(() => {
     const fetchClients = async () => {
-      const clientSnap = await getDocs(collection(db, "clients"));
-      const clientList = clientSnap.docs.map((doc) => ({
-        value: doc.id,
-        label: `${doc.data().company_name} — ${doc.data().client_name}`,
-      }));
-      setClients(clientList);
+      const snap = await getDocs(collection(db, "clients"));
+      const map = {};
+      snap.forEach((d) => {
+        map[d.id] = d.data() || {};
+      });
+      setClientsData(map);
     };
-
     fetchClients();
   }, []);
 
+  const matchesCompany = (data, comp) => {
+    if (!data) return false;
+    const compNorm = String(data.company || "").toUpperCase().trim();
+    const group = String(data.company_group || "").toUpperCase().trim();
+    if (compNorm && compNorm === comp) return true;
+    if (group === "WT_WTPL" && (comp === "WT" || comp === "WTPL")) return true;
+    if (group === "WTX_WTXPL" && (comp === "WTX" || comp === "WTXPL")) return true;
+    return false;
+  };
+
+  const filteredClientOptions = useMemo(() => {
+    return Object.entries(clientsData)
+      .filter(([, data]) => matchesCompany(data, company))
+      .map(([id, data]) => ({
+        value: id,
+        label: data.client_name ? data.client_name : id,
+      }));
+  }, [clientsData, company]);
+
+  const handleClientChange = (opt) => {
+    setSelectedClient(opt);
+    const docData = opt ? clientsData[opt.value] : null;
+    if (docData?.poc) {
+      setPoc(mapShortPocToFull(docData.poc, company));
+    } else {
+      setPoc("");
+    }
+  };
+
+  const handleCompanyChange = (e) => {
+    const next = e.target.value;
+    setCompany(next);
+    setSelectedClient(null);
+    setPoc("");
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    if (!projectName || !selectedClient || !company) {
-      alert("Project Name, Client, and Company are required.");
+    if (!projectName || !selectedClient || !company || !poc) {
+      alert("Project Name, Client, Company, and POC are required.");
       return;
     }
 
@@ -80,8 +167,8 @@ export default function AddProject() {
 
       alert("Project added successfully!");
       navigate("/dashboard/all-projects");
-    } catch (error) {
-      console.error("Error adding project:", error);
+    } catch (err) {
+      console.error("Error adding project:", err);
       alert("Failed to add project.");
     }
   };
@@ -94,7 +181,7 @@ export default function AddProject() {
         <label style={styles.label}>Select Company</label>
         <select
           value={company}
-          onChange={(e) => setCompany(e.target.value)}
+          onChange={handleCompanyChange}
           style={styles.input}
           required
         >
@@ -106,11 +193,13 @@ export default function AddProject() {
 
         <label style={styles.label}>Select Client</label>
         <Select
-          options={clients}
+          options={filteredClientOptions}
           value={selectedClient}
-          onChange={(val) => setSelectedClient(val)}
+          onChange={handleClientChange}
           placeholder="Select Client"
           isSearchable
+          isClearable
+          noOptionsMessage={() => "No clients for this company"}
           styles={styles.select}
         />
 
@@ -148,11 +237,14 @@ export default function AddProject() {
         )}
 
         <label style={styles.label}>POC</label>
-        <input
-          type="text"
-          value={poc}
-          onChange={(e) => setPoc(e.target.value)}
-          style={styles.input}
+        <Select
+          options={currentPocOptions}
+          value={poc ? { label: poc, value: poc } : null}
+          onChange={(opt) => setPoc(opt?.value || "")}
+          placeholder='Select POC (e.g., "Lingareddy Navya - WT122")'
+          isSearchable
+          isClearable
+          styles={styles.select}
         />
 
         <label style={styles.label}>Select Services</label>

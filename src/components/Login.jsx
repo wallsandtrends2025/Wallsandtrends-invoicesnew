@@ -13,7 +13,7 @@ export default function Login() {
     e.preventDefault();
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      navigate("/dashboard"); // ✅ Redirect to Dashboard
+      navigate("/dashboard/home"); // ✅ Redirect to Dashboard
     } catch (err) {
       setError("Invalid credentials. Please try again.");
     }
@@ -53,4 +53,4 @@ export default function Login() {
       </form>
     </div>
   );
-}
+}  

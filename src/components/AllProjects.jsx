@@ -1,5 +1,5 @@
-// Import Statements
-import React, { useEffect, useState } from 'react';
+// src/pages/AllProjects.jsx
+import React, { useEffect, useMemo, useState } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs, getDoc, deleteDoc, doc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
@@ -9,53 +9,90 @@ export default function AllProjects() {
   const [invoices, setInvoices] = useState([]);
   const [quotations, setQuotations] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  // pagination (applies to filtered list)
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
   const navigate = useNavigate();
+
+  // ---------- helpers ----------
+  const safeJoin = (items, sep = ', ') => {
+    return (items || [])
+      .map((x) => (typeof x === 'string' ? x : x?.name || ''))
+      .map((s) => String(s || '').trim())
+      .filter(Boolean)
+      .join(sep) || '-';
+  };
+
+  const formatServices = (services) => {
+    if (!services) return '-';
+    if (typeof services === 'string') {
+      const parts = services.split(/[,|]/g).map((s) => s.trim()).filter(Boolean);
+      return safeJoin(parts, ', ');
+    }
+    if (Array.isArray(services)) return safeJoin(services, ', ');
+    const guess = services.name || services.serviceName || services.title || '';
+    return guess ? guess : '-';
+  };
 
   useEffect(() => {
     const fetchData = async () => {
-      const projectSnap = await getDocs(collection(db, 'projects'));
-      const invoiceSnap = await getDocs(collection(db, 'invoices'));
-      const quotationSnap = await getDocs(collection(db, 'quotations'));
+      setLoading(true);
+      try {
+        const projectSnap = await getDocs(collection(db, 'projects'));
+        const invoiceSnap = await getDocs(collection(db, 'invoices'));
+        const quotationSnap = await getDocs(collection(db, 'quotations'));
 
-      const invoiceList = invoiceSnap.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data(),
-      }));
-      const quotationList = quotationSnap.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data(),
-      }));
+        const invoiceList = invoiceSnap.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+        const quotationList = quotationSnap.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
 
-      const projectData = await Promise.all(
-        projectSnap.docs.map(async (docSnap) => {
-          const project = { id: docSnap.id, ...docSnap.data() };
+        const projectData = await Promise.all(
+          projectSnap.docs.map(async (docSnap) => {
+            const project = { id: docSnap.id, ...docSnap.data() };
 
-          // Fetch client name
-          let clientName = '';
-          if (project.clientId) {
-            const clientRef = doc(db, 'clients', project.clientId);
-            const clientDoc = await getDoc(clientRef);
-            if (clientDoc.exists()) {
-              const clientData = clientDoc.data();
-              clientName =
-                clientData.name ||
-                clientData.companyName ||
-                clientData.client_name ||
-                clientData.company_name ||
-                '';
+            // Fetch client name
+            let clientName = '';
+            if (project.clientId) {
+              const clientRef = doc(db, 'clients', project.clientId);
+              const clientDoc = await getDoc(clientRef);
+              if (clientDoc.exists()) {
+                const c = clientDoc.data();
+                clientName =
+                  c.name ||
+                  c.companyName ||
+                  c.client_name ||
+                  c.company_name ||
+                  '';
+              }
             }
-          }
 
-          return {
-            ...project,
-            clientName,
-          };
-        })
-      );
+            return { ...project, clientName };
+          })
+        );
 
-      setProjects(projectData.filter((p) => p.projectName?.trim()));
-      setInvoices(invoiceList);
-      setQuotations(quotationList);
+        // Sort projects alphabetically by projectName
+        const sortedProjects = projectData
+          .filter((p) => (p.projectName || '').trim())
+          .sort((a, b) => (a.projectName || '').localeCompare(b.projectName || ''));
+
+        setProjects(sortedProjects);
+        setInvoices(invoiceList);
+        setQuotations(quotationList);
+        setPage(1); // reset page on fresh load
+      } catch (e) {
+        console.error('Error loading projects:', e);
+        alert('Error loading projects');
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchData();
@@ -64,14 +101,48 @@ export default function AllProjects() {
   const handleDelete = async (id) => {
     if (window.confirm('Are you sure you want to delete this project?')) {
       await deleteDoc(doc(db, 'projects', id));
-      setProjects((prev) => prev.filter((p) => p.id !== id));
+      setProjects((prev) => {
+        const next = prev.filter((p) => p.id !== id);
+        // keep list sorted
+        next.sort((a, b) => (a.projectName || '').localeCompare(b.projectName || ''));
+        // recalc page bounds if last item on page removed
+        const nextTotalPages = Math.max(1, Math.ceil(next.length / pageSize));
+        if (page > nextTotalPages) setPage(nextTotalPages);
+        return next;
+      });
     }
   };
 
-  const filteredProjects = projects.filter(
-    (project) =>
-      (project.projectName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (project.clientName || '').toLowerCase().includes(searchTerm.toLowerCase())
+  // ----- search + filtered list -----
+  const filteredProjects = useMemo(() => {
+    const q = (searchTerm || '').toLowerCase();
+    if (!q) return projects;
+    return projects.filter(
+      (project) =>
+        (project.projectName || '').toLowerCase().includes(q) ||
+        (project.clientName || '').toLowerCase().includes(q)
+    );
+  }, [projects, searchTerm]);
+
+  // Reset to page 1 when searchTerm or pageSize changes
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, pageSize]);
+
+  // ----- pagination calculated from filtered list -----
+  const totalRows = filteredProjects.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+
+  // keep page in range when filtered list shrinks or grows
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  const startIdx = (page - 1) * pageSize;
+  const endIdx = Math.min(startIdx + pageSize, totalRows);
+  const pagedProjects = useMemo(
+    () => filteredProjects.slice(startIdx, endIdx),
+    [filteredProjects, startIdx, endIdx]
   );
 
   const statusBadge = (status) => {
@@ -91,45 +162,149 @@ export default function AllProjects() {
     );
   };
 
-  const renderProjectInvoices = (projectId) => {
-    const projectInvoices = invoices.filter((inv) => inv.project_id === projectId);
-    if (projectInvoices.length === 0) return <span className="text-gray-400">N/A</span>;
+  // Comma-separated, clickable list
+  const renderCommaSeparatedLinks = (items, getId, onClick) => {
+    if (!items.length) return <span className="text-gray-400">N/A</span>;
 
     return (
-      <div className="flex flex-wrap gap-1 justify-center">
-        {projectInvoices.map((inv) => (
-          <span
-            key={inv.id}
-            onClick={() => navigate(`/dashboard/invoice-preview/${inv.id}`)}
-            className="cursor-pointer bg-blue-500 text-white px-2 py-1 rounded-full text-xs hover:bg-blue-600"
-            title="Click to view Invoice"
-          >
-            {inv.invoice_id || inv.id}
-          </span>
-        ))}
+      <div className="flex flex-wrap gap-x-1 justify-center">
+        {items.map((item, idx) => {
+          const label = getId(item);
+          return (
+            <React.Fragment key={item.id}>
+              <button
+                type="button"
+                title="Click to view"
+                className="underline text-blue-300 hover:text-blue-100"
+                onClick={() => onClick(item)}
+              >
+                {label}
+              </button>
+              {idx !== items.length - 1 && <span>,&nbsp;</span>}
+            </React.Fragment>
+          );
+        })}
       </div>
+    );
+  };
+
+  const renderProjectInvoices = (projectId) => {
+    const projectInvoices = invoices.filter((inv) => inv.project_id === projectId);
+    return renderCommaSeparatedLinks(
+      projectInvoices,
+      (inv) => inv.invoice_id || inv.id,
+      (inv) => navigate(`/dashboard/invoice-preview/${inv.id}`)
     );
   };
 
   const renderProjectQuotations = (projectId) => {
     const projectQuotations = quotations.filter((qtn) => qtn.project_id === projectId);
-    if (projectQuotations.length === 0) return <span className="text-gray-400">N/A</span>;
+    return renderCommaSeparatedLinks(
+      projectQuotations,
+      (qtn) => qtn.quotation_id || qtn.id,
+      (qtn) => navigate(`/dashboard/quotation-preview/${qtn.id}`)
+    );
+  };
 
+  // --------- Round-numbered pager (like AllClients) ----------
+  const getVisiblePages = (current, total) => {
+    const max = 7; // total visible page numbers (excluding chevrons)
+    if (total <= max) return [...Array(total)].map((_, i) => i + 1);
+
+    const pages = [];
+    const showLeftDots = current > 4;
+    const showRightDots = current < total - 3;
+
+    pages.push(1);
+    if (showLeftDots) pages.push('dots-left');
+
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+    for (let p = start; p <= end; p++) pages.push(p);
+
+    if (showRightDots) pages.push('dots-right');
+    pages.push(total);
+    return pages;
+  };
+
+  const PagePill = ({ active, disabled, children, onClick }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        'w-9 h-9 rounded-full border flex items-center justify-center text-sm',
+        active
+          ? 'bg-blue-500 text-white border-blue-500'
+          : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100',
+        disabled ? 'opacity-50 cursor-not-allowed hover:bg-white' : 'cursor-pointer',
+      ].join(' ')}
+    >
+      {children}
+    </button>
+  );
+
+  const PaginationBar = () => {
+    const visible = getVisiblePages(page, totalPages);
     return (
-      <div className="flex flex-wrap gap-1 justify-center">
-        {projectQuotations.map((qtn) => (
-          <span
-            key={qtn.id}
-            onClick={() => navigate(`/dashboard/quotation-preview/${qtn.id}`)}
-            className="cursor-pointer bg-green-500 text-white px-2 py-1 rounded-full text-xs hover:bg-green-600"
-            title="Click to view Quotation"
-          >
-            {qtn.quotation_id || qtn.id}
-          </span>
-        ))}
+      <div className="flex items-center gap-2">
+        <PagePill
+          disabled={page === 1}
+          onClick={() => setPage(Math.max(1, page - 1))}
+        >
+          ‹
+        </PagePill>
+
+        {visible.map((p, i) =>
+          typeof p === 'number' ? (
+            <PagePill
+              key={`${p}-${i}`}
+              active={p === page}
+              onClick={() => setPage(p)}
+            >
+              {p}
+            </PagePill>
+          ) : (
+            <span key={`${p}-${i}`} className="px-2 text-gray-400 select-none">
+              …
+            </span>
+          )
+        )}
+
+        <PagePill
+          disabled={page === totalPages}
+          onClick={() => setPage(Math.min(totalPages, page + 1))}
+        >
+          ›
+        </PagePill>
       </div>
     );
   };
+
+  // --- Top-right controls: "Items per page" + count like screenshot ---
+  const TopRightControls = () => (
+    <div className="flex items-center gap-2 ml-auto">
+      <label className="text-sm text-gray-700">Items per page:</label>
+      <select
+        value={pageSize}
+        onChange={(e) => {
+          setPageSize(Number(e.target.value));
+          setPage(1);
+        }}
+        className="border p-1 rounded"
+      >
+        {[10, 25, 50, 100].map((n) => (
+          <option key={n} value={n}>
+            {n}
+          </option>
+        ))}
+      </select>
+      <span className="text-sm text-gray-700">
+        Showing <strong>{totalRows ? startIdx + 1 : 0}</strong>–<strong>{endIdx}</strong> of{' '}
+        <strong>{totalRows}</strong>
+      </span>
+    </div>
+  );
 
   return (
     <div className="p-6 min-h-screen bg-gray-100 all-projects-block">
@@ -145,83 +320,95 @@ export default function AllProjects() {
           />
         </div>
 
-        {filteredProjects.length === 0 ? (
+        {/* Top-right items-per-page control */}
+        <div className="flex justify-end my-4">
+          <TopRightControls />
+        </div>
+
+        {loading ? (
+          <p className="text-center text-gray-500 py-10">Loading…</p>
+        ) : totalRows === 0 ? (
           <p className="text-center text-gray-500 py-10">No projects found.</p>
         ) : (
-          <div className="overflow-auto mt-6 rounded-lg">
-            <table className="min-w-full text-sm text-white bg-black rounded-lg">
-              <thead className="bg-gray-900 sticky top-0 z-10 text-white">
-                <tr>
-                  <th className="px-6 py-3 font-semibold border border-gray-800">Project Name</th>
-                  <th className="px-6 py-3 font-semibold border border-gray-800">Company</th>
-                  <th className="px-6 py-3 font-semibold border border-gray-800">Client</th>
-                  <th className="px-6 py-3 font-semibold border border-gray-800">POC</th>
-                  <th className="px-6 py-3 font-semibold border border-gray-800">Movie / Brand</th>
-                  <th className="px-6 py-3 font-semibold border border-gray-800">Services</th>
-                  <th className="px-6 py-3 font-semibold border border-gray-800">Payment</th>
-                  <th className="px-6 py-3 font-semibold border border-gray-800 text-center">Invoices</th>
-                  <th className="px-6 py-3 font-semibold border border-gray-800 text-center">Quotations</th>
-                  <th className="px-6 py-3 font-semibold border border-gray-800 text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredProjects.map((project, index) => (
-                  <tr
-                    key={project.id}
-                    className={`${
-                      index % 2 === 0 ? 'bg-gray-950' : 'bg-black'
-                    } hover:bg-gray-800 transition`}
-                  >
-                    <td className="px-6 py-3 border border-gray-800">{project.projectName}</td>
-                    <td className="px-6 py-3 border border-gray-800">{project.company || '-'}</td>
-                    <td className="px-6 py-3 border border-gray-800">{project.clientName || '-'}</td>
-                    <td className="px-6 py-3 border border-gray-800">{project.poc || '-'}</td>
-                    <td className="px-6 py-3 border border-gray-800">
-                      {["WT", "WTPL"].includes(project.company)
-                        ? project.movieName || "-"
-                        : ["WTX", "WTXPL"].includes(project.company)
-                        ? project.brandName || "-"
-                        : "-"}
-                    </td>
-                    <td className="px-6 py-3 border border-gray-800">
-                      {(project.services || []).join(", ") || "-"}
-                    </td>
-                    <td className="px-6 py-3 border border-gray-800">
-                      {statusBadge(project.paymentStatus)}
-                    </td>
-                    <td className="px-6 py-3 text-center border border-gray-800">
-                      {renderProjectInvoices(project.id)}
-                    </td>
-                    <td className="px-6 py-3 text-center border border-gray-800">
-                      {renderProjectQuotations(project.id)}
-                    </td>
-                    <td className="px-6 py-3 border border-gray-800">
-                      <div className="flex justify-center items-center gap-x-2">
-                        <button
-                          onClick={() => navigate(`/dashboard/edit-project/${project.id}`)}
-                          className="bg-blue-500 hover:bg-blue-600 text-white text-xs px-3 py-1 rounded edit"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(project.id)}
-                          className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1 rounded edit"
-                        >
-                          Delete
-                        </button>
-                        <button
-                          onClick={() => navigate(`/dashboard/project-preview/${project.id}`)}
-                          className="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1 rounded edit"
-                        >
-                          Preview
-                        </button>
-                      </div>
-                    </td>
+          <>
+            <div className="relative overflow-x-auto max-h-[600px] overflow-y-auto mt-2 rounded-lg">
+              <table className="min-w-full text-sm text-white bg-black rounded-lg min-w-[1200px]">
+                <thead className="bg-gray-900 sticky top-0 z-10 text-white">
+                  <tr>
+                    <th className="px-6 py-3 font-semibold border border-gray-800 text-left">Project Name</th>
+                    <th className="px-6 py-3 font-semibold border border-gray-800 text-left">Company</th>
+                    <th className="px-6 py-3 font-semibold border border-gray-800 text-left">Client</th>
+                    <th className="px-6 py-3 font-semibold border border-gray-800 text-left">POC</th>
+                    <th className="px-6 py-3 font-semibold border border-gray-800 text-left">Movie / Brand</th>
+                    <th className="px-6 py-3 font-semibold border border-gray-800 text-left">Services</th>
+                    <th className="px-6 py-3 font-semibold border border-gray-800 text-left">Payment</th>
+                    <th className="px-6 py-3 font-semibold border border-gray-800 text-center">Invoices</th>
+                    <th className="px-6 py-3 font-semibold border border-gray-800 text-center">Quotations</th>
+                    <th className="px-6 py-3 font-semibold border border-gray-800 text-center">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {pagedProjects.map((project, index) => (
+                    <tr
+                      key={project.id}
+                      className={`${index % 2 === 0 ? 'bg-gray-950' : 'bg-black'} hover:bg-gray-800 transition`}
+                    >
+                      <td className="px-6 py-3 border border-gray-800">{project.projectName}</td>
+                      <td className="px-6 py-3 border border-gray-800">{project.company || '-'}</td>
+                      <td className="px-6 py-3 border border-gray-800">{project.clientName || '-'}</td>
+                      <td className="px-6 py-3 border border-gray-800">{project.poc || '-'}</td>
+                      <td className="px-6 py-3 border border-gray-800">
+                        {['WT', 'WTPL'].includes(project.company)
+                          ? project.movieName || '-'
+                          : ['WTX', 'WTXPL'].includes(project.company)
+                          ? project.brandName || '-'
+                          : '-'}
+                      </td>
+                      <td className="px-6 py-3 border border-gray-800">
+                        {formatServices(project.services)}
+                      </td>
+                      <td className="px-6 py-3 border border-gray-800">
+                        {statusBadge(project.paymentStatus)}
+                      </td>
+                      <td className="px-6 py-3 text-center border border-gray-800">
+                        {renderProjectInvoices(project.id)}
+                      </td>
+                      <td className="px-6 py-3 text-center border border-gray-800">
+                        {renderProjectQuotations(project.id)}
+                      </td>
+                      <td className="px-6 py-3 border border-gray-800">
+                        <div className="flex justify-center items-center gap-x-2">
+                          <button
+                            onClick={() => navigate(`/dashboard/edit-project/${project.id}`)}
+                            className="bg-blue-500 hover:bg-blue-600 text-white text-xs px-3 py-1 rounded edit"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(project.id)}
+                            className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1 rounded edit"
+                          >
+                            Delete
+                          </button>
+                          <button
+                            onClick={() => navigate(`/dashboard/project-preview/${project.id}`)}
+                            className="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1 rounded edit"
+                          >
+                            Preview
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Bottom-right round pager */}
+            <div className="flex justify-end my-6">
+              <PaginationBar />
+            </div>
+          </>
         )}
       </div>
     </div>

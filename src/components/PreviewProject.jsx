@@ -1,63 +1,62 @@
-import React, { useEffect, useState } from "react";
+// src/pages/PreviewProject.jsx
+import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { doc, getDoc, getDocs, collection } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
 export default function PreviewProject() {
   const { id } = useParams();
+  const navigate = useNavigate();
+
   const [project, setProject] = useState(null);
   const [clientName, setClientName] = useState("");
-  const [invoiceLabels, setInvoiceLabels] = useState([]);
-  const [quotationLabels, setQuotationLabels] = useState([]);
-  const navigate = useNavigate();
+
+  // Helpers
+  const isWTGroup = useMemo(
+    () => (company) => ["WT", "WTPL"].includes(company),
+    []
+  );
+  const isWTXGroup = useMemo(
+    () => (company) => ["WTX", "WTXPL"].includes(company),
+    []
+  );
 
   useEffect(() => {
     const fetchProject = async () => {
-      const projectRef = doc(db, "projects", id);
-      const projectSnap = await getDoc(projectRef);
-
-      if (!projectSnap.exists()) {
-        alert("Project not found!");
-        return navigate("/dashboard/all-projects");
-      }
-
-      const projectData = projectSnap.data();
-
-      // Fetch Client Name
-      let clientDisplay = "";
       try {
-        const clientRef = doc(db, "clients", projectData.clientId);
-        const clientSnap = await getDoc(clientRef);
-        const client = clientSnap.data();
-        clientDisplay = client ? `${client.company_name} — ${client.client_name}` : projectData.clientId;
-      } catch {
-        clientDisplay = projectData.clientId;
-      }
+        const projectRef = doc(db, "projects", id);
+        const snap = await getDoc(projectRef);
 
-      // Fetch Invoice Numbers
-      let invoiceList = [];
-      if (projectData.invoiceIds?.length > 0) {
-        const allInvoices = await getDocs(collection(db, "invoices"));
-        invoiceList = projectData.invoiceIds.map(id => {
-          const found = allInvoices.docs.find(doc => doc.id === id);
-          return found?.data()?.invoice_id || id;
-        });
-      }
+        if (!snap.exists()) {
+          alert("Project not found!");
+          return navigate("/dashboard/all-projects");
+        }
 
-      // Fetch Quotation Numbers
-      let quotationList = [];
-      if (projectData.quotationIds?.length > 0) {
-        const allQuotations = await getDocs(collection(db, "quotations"));
-        quotationList = projectData.quotationIds.map(id => {
-          const found = allQuotations.docs.find(doc => doc.id === id);
-          return found?.data()?.quotation_id || id;
-        });
-      }
+        const data = snap.data();
 
-      setClientName(clientDisplay);
-      setInvoiceLabels(invoiceList);
-      setQuotationLabels(quotationList);
-      setProject(projectData);
+        // Resolve client display
+        let display = data.clientId || "";
+        try {
+          if (data.clientId) {
+            const clientRef = doc(db, "clients", data.clientId);
+            const clientSnap = await getDoc(clientRef);
+            if (clientSnap.exists()) {
+              const c = clientSnap.data();
+              // falls back gracefully if any field missing
+              display = `${c.company_name || ""} — ${c.client_name || data.clientId}`.trim();
+            }
+          }
+        } catch {
+          // keep fallback
+        }
+
+        setClientName(display);
+        setProject(data);
+      } catch (err) {
+        console.error("Failed to load project:", err);
+        alert("Failed to load project.");
+        navigate("/dashboard/all-projects");
+      }
     };
 
     fetchProject();
@@ -67,27 +66,53 @@ export default function PreviewProject() {
     return <div style={styles.loading}>Loading...</div>;
   }
 
+  const showMovie = isWTGroup(project.company);
+  const showBrand = isWTXGroup(project.company);
+
+  // Optional legacy fields (only render if present in doc)
+  const hasInvoices =
+    Array.isArray(project.invoiceLabels) && project.invoiceLabels.length > 0;
+  const hasQuotations =
+    Array.isArray(project.quotationLabels) && project.quotationLabels.length > 0;
+
   return (
     <div style={styles.container}>
       <h2 style={styles.heading}>Project Preview</h2>
       <table style={styles.table}>
         <tbody>
-          {renderRow("Project Name", project.projectName)}
-          {renderRow("Client", clientName)}
-          {renderRow("POC", project.poc)}
-          {renderRow("Movie Name", project.movieName)}
-          {renderRow("Work Type", project.workType)}
-          {renderRow("Payment Status", project.paymentStatus)}
-          {renderRow("Invoices", invoiceLabels.length ? invoiceLabels.join(", ") : "—")}
-          {renderRow("Quotations", quotationLabels.length ? quotationLabels.join(", ") : "—")}
-          {renderRow("Created At", project.createdAt?.toDate().toLocaleString())}
+          {row("Project Name", project.projectName)}
+          {row("Company", project.company)}
+          {row("Client", clientName)}
+          {row("POC", project.poc)}
+          {showMovie && row("Movie Name", project.movieName || "—")}
+          {showBrand && row("Brand Name", project.brandName || "—")}
+          {row(
+            "Services",
+            Array.isArray(project.services) && project.services.length
+              ? <BadgeList items={project.services} />
+              : "—"
+          )}
+          {row(
+            "Created At",
+            project.createdAt?.toDate
+              ? project.createdAt.toDate().toLocaleString()
+              : "—"
+          )}
+
+          {/* Optional legacy rows (only if your doc already has them) */}
+          {hasInvoices &&
+            row("Invoices", (project.invoiceLabels || []).join(", "))}
+          {hasQuotations &&
+            row("Quotations", (project.quotationLabels || []).join(", "))}
         </tbody>
       </table>
 
       <div style={styles.buttonWrapper}>
-        <button style={styles.button} onClick={() => navigate(-1)}>Back</button>
+        <button style={styles.button} onClick={() => navigate(-1)}>
+          Back
+        </button>
         <button
-          style={{ ...styles.button, backgroundColor: "#28a745", marginLeft: "12px" }}
+          style={{ ...styles.button, backgroundColor: "#28a745", marginLeft: 12 }}
           onClick={() => navigate(`/dashboard/edit-project/${id}`)}
         >
           Edit
@@ -97,19 +122,31 @@ export default function PreviewProject() {
   );
 }
 
-function renderRow(label, value) {
+function row(label, value) {
   return (
     <tr>
       <td style={styles.label}>{label}</td>
-      <td style={styles.value}>{value || "—"}</td>
+      <td style={styles.value}>
+        {typeof value === "string" || typeof value === "number" ? value : value}
+      </td>
     </tr>
+  );
+}
+
+function BadgeList({ items }) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+      {items.map((it, idx) => (
+        <span key={idx} style={styles.badge}>{it}</span>
+      ))}
+    </div>
   );
 }
 
 const styles = {
   container: {
     padding: "40px",
-    maxWidth: "700px",
+    maxWidth: "780px",
     margin: "0 auto",
     fontFamily: "Arial, sans-serif",
   },
@@ -130,11 +167,21 @@ const styles = {
     fontWeight: "bold",
     backgroundColor: "#f7f7f7",
     borderBottom: "1px solid #ddd",
-    width: "40%",
+    width: "38%",
   },
   value: {
     padding: "16px",
     borderBottom: "1px solid #ddd",
+    verticalAlign: "top",
+  },
+  badge: {
+    display: "inline-block",
+    padding: "6px 10px",
+    borderRadius: "999px",
+    background: "#111",
+    color: "#fff",
+    fontSize: 12,
+    lineHeight: 1,
   },
   buttonWrapper: {
     textAlign: "center",
