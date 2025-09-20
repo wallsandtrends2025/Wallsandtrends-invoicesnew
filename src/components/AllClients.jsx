@@ -8,9 +8,30 @@ export default function AllClients() {
   const [loading, setLoading] = useState(false);
 
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(25); // number or "all"
 
   const navigate = useNavigate();
+
+  // --- Helper: format POC like "Name - WT120" from "Name WT120"
+  const formatPocLabel = (s) => {
+    const m = String(s || "").match(/^(.*\S)\s*-?\s*([A-Za-z]{2,}\d{2,})$/);
+    return m ? `${m[1]} - ${m[2]}` : (s || "—");
+  };
+
+  // --- Helper: format Firestore Timestamp to DD-MMM-YYYY (or "—")
+  const fmtDate = (ts) => {
+    try {
+      const d = ts?.toDate ? ts.toDate() : (ts instanceof Date ? ts : null);
+      if (!d) return "—";
+      return d.toLocaleDateString(undefined, {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    } catch {
+      return "—";
+    }
+  };
 
   useEffect(() => {
     const fetchClients = async () => {
@@ -19,8 +40,11 @@ export default function AllClients() {
         const snapshot = await getDocs(collection(db, "clients"));
         const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
 
+        // Sort by client_name (case-insensitive)
         list.sort((a, b) =>
-          (a.client_name || "").toLowerCase().localeCompare((b.client_name || "").toLowerCase())
+          (a.client_name || "")
+            .toLowerCase()
+            .localeCompare((b.client_name || "").toLowerCase())
         );
 
         setClients(list);
@@ -36,16 +60,21 @@ export default function AllClients() {
   }, []);
 
   const totalRows = clients.length;
-  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  const isShowAll = pageSize === "all";
+  const effectivePageSize = isShowAll ? (totalRows || 1) : pageSize;
+
+  const totalPages = Math.max(1, isShowAll ? 1 : Math.ceil(totalRows / effectivePageSize));
+
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 
-  const startIdx = (page - 1) * pageSize;
-  const endIdx = Math.min(startIdx + pageSize, totalRows);
+  const startIdx = isShowAll ? 0 : (page - 1) * effectivePageSize;
+  const endIdx = isShowAll ? totalRows : Math.min(startIdx + effectivePageSize, totalRows);
+
   const pagedClients = useMemo(
-    () => clients.slice(startIdx, endIdx),
-    [clients, startIdx, endIdx]
+    () => (isShowAll ? clients : clients.slice(startIdx, endIdx)),
+    [clients, isShowAll, startIdx, endIdx]
   );
 
   const handleDelete = async (id) => {
@@ -53,11 +82,15 @@ export default function AllClients() {
       await deleteDoc(doc(db, "clients", id));
       setClients((prev) => {
         const next = prev.filter((c) => c.id !== id);
-        const nextTotalPages = Math.max(1, Math.ceil(next.length / pageSize));
-        if (page > nextTotalPages) setPage(nextTotalPages);
+        // Re-sort
         next.sort((a, b) =>
-          (a.client_name || "").toLowerCase().localeCompare((b.client_name || "").toLowerCase())
+          (a.client_name || "")
+            .toLowerCase()
+            .localeCompare((b.client_name || "").toLowerCase())
         );
+        // Recompute pages
+        const nextTotalPages = isShowAll ? 1 : Math.max(1, Math.ceil(next.length / effectivePageSize));
+        if (page > nextTotalPages) setPage(nextTotalPages);
         return next;
       });
     }
@@ -73,16 +106,13 @@ export default function AllClients() {
     const showRightDots = current < total - 3;
 
     pages.push(1);
-
     if (showLeftDots) pages.push("dots-left");
 
     const start = Math.max(2, current - 1);
     const end = Math.min(total - 1, current + 1);
-
     for (let p = start; p <= end; p++) pages.push(p);
 
     if (showRightDots) pages.push("dots-right");
-
     pages.push(total);
     return pages;
   };
@@ -105,6 +135,7 @@ export default function AllClients() {
   );
 
   const PaginationBar = () => {
+    if (totalPages <= 1) return null; // hide when single page or "Show all"
     const visible = getVisiblePages(page, totalPages);
     return (
       <div className="flex items-center gap-2">
@@ -141,27 +172,33 @@ export default function AllClients() {
     );
   };
 
-  // --- Top right: Items per page + Showing count ---
+  // --- Top right: Items per page (top) + Showing count (below)
   const TopRightControls = () => (
-    <div className="flex items-center gap-2 ml-auto">
-      <label className="text-sm text-gray-600">Items per page:</label>
-      <select
-        value={pageSize}
-        onChange={(e) => {
-          setPageSize(Number(e.target.value));
-          setPage(1);
-        }}
-        className="border p-1 rounded"
-      >
-        {[10, 25, 50, 100].map((n) => (
-          <option key={n} value={n}>
-            {n}
-          </option>
-        ))}
-      </select>
+    <div className="flex flex-col items-end gap-2 ml-auto">
+      <div className="flex items-center gap-2">
+        <label className="text-sm text-gray-600">Items per page:</label>
+        <select
+          value={pageSize}
+          onChange={(e) => {
+            const v = e.target.value === "all" ? "all" : Number(e.target.value);
+            setPageSize(v);
+            setPage(1);
+          }}
+          className="border p-1 rounded"
+        >
+          {[10, 25, 50, 100].map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+          <option value="all">Show all</option>
+        </select>
+      </div>
+
       <span className="text-sm text-gray-600">
-        Showing <strong>{totalRows ? startIdx + 1 : 0}</strong>–
-        <strong>{endIdx}</strong> of <strong>{totalRows}</strong>
+        Showing <strong>{totalRows ? (isShowAll ? 1 : startIdx + 1) : 0}</strong>–
+        <strong>{isShowAll ? totalRows : endIdx}</strong> of{" "}
+        <strong>{totalRows}</strong>
       </span>
     </div>
   );
@@ -170,7 +207,7 @@ export default function AllClients() {
     <div className="p-6 all-clients">
       <h2 className="text-xl font-semibold mb-4">All Clients</h2>
 
-      {/* Top controls (items per page in top-right) */}
+      {/* Top controls (items per page on top, showing below) */}
       <div className="flex justify-end my-4">
         <TopRightControls />
       </div>
@@ -186,7 +223,7 @@ export default function AllClients() {
               <thead className="bg-gray-100 text-left sticky top-0 z-10">
                 <tr>
                   <th className="p-2 border">Client Name</th>
-                  <th className="p-2 border">Company</th>
+                  <th className="p-2 border">Company Name</th>
                   <th className="p-2 border">POC</th>
                   <th className="p-2 border">Phone</th>
                   <th className="p-2 border">Email</th>
@@ -195,37 +232,39 @@ export default function AllClients() {
                   <th className="p-2 border">Address</th>
                   <th className="p-2 border">PAN</th>
                   <th className="p-2 border">GST</th>
+                  <th className="p-2 border">Created</th>
                   <th className="p-2 border">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {pagedClients.map((client) => (
-                  <tr key={client.id} className="hover:bg-gray-50">
-                    <td className="p-2 border">{client.client_name || "—"}</td>
-                    <td className="p-2 border">{client.company_name || "—"}</td>
-                    <td className="p-2 border">{client.poc || "—"}</td>
-                    <td className="p-2 border">{client.phone || "—"}</td>
-                    <td className="p-2 border">{client.email || "—"}</td>
-                    <td className="p-2 border">{client.country || "—"}</td>
-                    <td className="p-2 border">{client.state || "—"}</td>
-                    <td className="p-2 border">{client.address || "—"}</td>
-                    <td className="p-2 border">{client.pan_number || "—"}</td>
-                    <td className="p-2 border">{client.gst_number || "—"}</td>
+                {pagedClients.map((c) => (
+                  <tr key={c.id} className="hover:bg-gray-50">
+                    <td className="p-2 border">{c.client_name || "—"}</td>
+                    <td className="p-2 border">{c.company_name || "—"}</td>
+                    <td className="p-2 border">{formatPocLabel(c.poc)}</td>
+                    <td className="p-2 border">{c.phone || "—"}</td>
+                    <td className="p-2 border">{c.email || "—"}</td>
+                    <td className="p-2 border">{c.country || "—"}</td>
+                    <td className="p-2 border">{c.state || "—"}</td>
+                    <td className="p-2 border">{c.address || "—"}</td>
+                    <td className="p-2 border">{c.pan_number || "—"}</td>
+                    <td className="p-2 border">{c.gst_number || "—"}</td>
+                    <td className="p-2 border">{fmtDate(c.created_at)}</td>
                     <td className="p-2 border whitespace-nowrap">
                       <button
-                        onClick={() => navigate(`/dashboard/edit-client/${client.id}`)}
+                        onClick={() => navigate(`/dashboard/edit-client/${c.id}`)}
                         className="mr-2 text-blue-600 hover:underline edit"
                       >
                         Edit
                       </button>
                       <button
-                        onClick={() => handleDelete(client.id)}
+                        onClick={() => handleDelete(c.id)}
                         className="mr-2 text-red-600 hover:underline edit"
                       >
                         Delete
                       </button>
                       <button
-                        onClick={() => navigate(`/dashboard/client-preview/${client.id}`)}
+                        onClick={() => navigate(`/dashboard/client-preview/${c.id}`)}
                         className="text-green-600 hover:underline edit"
                       >
                         Preview
@@ -237,7 +276,7 @@ export default function AllClients() {
             </table>
           </div>
 
-          {/* Bottom pagination bar */}
+          {/* Bottom pagination bar (hidden when "Show all") */}
           <div className="flex justify-end my-6">
             <PaginationBar />
           </div>

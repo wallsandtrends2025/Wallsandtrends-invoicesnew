@@ -202,6 +202,25 @@ export default function ProformaList() {
     }
   };
 
+  // ---- delete (refreshes current page) ----
+  const handleDelete = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this proforma/quotation?")) return;
+    try {
+      await deleteDoc(doc(db, "quotations", id));
+      setTotalCount((c) => Math.max(0, c - 1));
+      // reload current page (keep position if we have its cursor)
+      const currentCursor = cursors[page - 1];
+      if (page === 1 || !currentCursor) {
+        await runPageQuery({ direction: "first" });
+      } else {
+        await runPageQuery({ direction: "jump", jumpDoc: currentCursor, targetPage: page });
+      }
+    } catch (e) {
+      console.error("delete error", e);
+      alert("Failed to delete");
+    }
+  };
+
   // ---- UI bits (same look as other pages) ----
   const getVisiblePages = (current, total) => {
     const max = 7;
@@ -261,27 +280,31 @@ export default function ProformaList() {
     );
   };
 
+  // --- Top-right controls (STACKED like other pages)
   const TopRightControls = () => {
     const shownFrom = totalCount ? (page - 1) * pageSize + (proformas.length ? 1 : 0) : 0;
     const shownTo = totalCount ? Math.min(page * pageSize, totalCount) : proformas.length;
     return (
-      <div className="flex items-center gap-2 ml-auto">
-        <label className="text-sm text-gray-700">Items per page:</label>
-        <select
-          value={pageSize}
-          onChange={async (e) => {
-            setPageSize(Number(e.target.value));
-            // reset to first page with new page size
-            await runPageQuery({ direction: "first" });
-          }}
-          className="border p-1 rounded"
-        >
-          {[5, 10, 20, 50].map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
+      <div className="flex flex-col items-end gap-2 ml-auto">
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-gray-700">Items per page:</label>
+          <select
+            value={pageSize}
+            onChange={async (e) => {
+              setPageSize(Number(e.target.value));
+              // reset to first page with new page size
+              await runPageQuery({ direction: "first" });
+            }}
+            className="border p-1 rounded"
+          >
+            {[5, 10, 20, 50].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <span className="text-sm text-gray-700">
           Showing <strong>{shownFrom || 0}</strong>–<strong>{shownTo || 0}</strong> of{" "}
           <strong>{totalCount}</strong>

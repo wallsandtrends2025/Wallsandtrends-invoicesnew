@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { db } from "../firebase";
 import { doc, getDoc } from "firebase/firestore";
-import { generateProformaInvoicePDF } from "../utils/generateProformaInvoicePDF"; // uses your existing util
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 
 export default function PreviewQuotation() { // keep the same component name to avoid import/route changes
   const { id } = useParams();
+  const previewRef = useRef();
   const [docData, setDocData] = useState(null);
   const [client, setClient] = useState(null);
 
@@ -31,17 +33,48 @@ export default function PreviewQuotation() { // keep the same component name to 
   }, [id]);
 
   const handleDownload = async () => {
-    if (!docData || !client) return;
+    if (!docData || !client || !previewRef.current) return;
     try {
-      const pdf = await generateProformaInvoicePDF(docData, client);
-      if (pdf?.save) {
-        const fileId = docData.proforma_id || docData.quotation_id || id;
-        pdf.save(`${fileId}.pdf`);
-      } else {
-        console.error("PDF generation failed.");
+      // Capture exactly as seen in preview
+      const canvas = await html2canvas(previewRef.current, {
+        scale: 1, // 1:1 capture - exactly as displayed
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        width: previewRef.current.offsetWidth,
+        height: previewRef.current.offsetHeight,
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+
+      const pdfWidth = 210;
+      const pdfHeight = 297;
+
+      // Convert pixels to mm (canvas is in pixels, PDF is in mm)
+      const pxToMm = 25.4 / 96; // Standard web DPI is 96
+      const imgWidthMm = canvas.width * pxToMm;
+      const imgHeightMm = canvas.height * pxToMm;
+
+      // If content is wider than page, scale it down
+      let finalWidth = imgWidthMm;
+      let finalHeight = imgHeightMm;
+
+      if (imgWidthMm > pdfWidth - 20) { // 10mm margin on each side
+        const scale = (pdfWidth - 20) / imgWidthMm;
+        finalWidth = imgWidthMm * scale;
+        finalHeight = imgHeightMm * scale;
       }
-    } catch (e) {
-      console.error("PDF generation error:", e);
+
+      // Center horizontally, place at top with small margin
+      const x = (pdfWidth - finalWidth) / 2;
+      const y = 10; // 10mm top margin
+
+      pdf.addImage(imgData, 'PNG', x, y, finalWidth, finalHeight);
+      const fileId = docData.proforma_id || docData.quotation_id || id;
+      pdf.save(`${fileId}.pdf`);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
     }
   };
 
@@ -60,14 +93,15 @@ export default function PreviewQuotation() { // keep the same component name to 
   const title = docData.proforma_title || docData.quotation_title;
   const total = Number(docData.total_amount);
 
-  const logoPath =
-    type === "WT" || type === "WTPL" ? "/wt-logo.png" : "/wtx_logo.webp";
+  const isWT = type === "WT" || type === "WTPL";
+  const isWTX = type === "WTX" || type === "WTXPL";
+  const headingColor = isWTX ? "#ffde58" : "#3b5998";
 
-  const companyName =
-    type === "WT" || type === "WTPL" ? "Walls And Trends" : "WTX";
+  const logoPath = isWT ? "/wt-logo.png" : "/wtx_logo.webp";
 
-  const gstIn =
-    type === "WT" || type === "WTPL" ? "36AACFW6827B1Z8" : "WTX GST NUMBER";
+  const companyName = isWT ? "Walls And Trends" : "WTX";
+
+  const gstIn = isWT ? "36AACFW6827B1Z8" : "WTX GST NUMBER";
 
   const renderServiceName = (name) => {
     // name can be string OR array (from your multi-select)
@@ -84,7 +118,7 @@ export default function PreviewQuotation() { // keep the same component name to 
         Download PDF
       </button>
 
-      <div className="max-w-5xl mx-auto p-6">
+      <div ref={previewRef} className="max-w-5xl mx-auto p-6">
         <div className="items-start mb-4">
           <img src={logoPath} alt="Company Logo" className="h-16" />
           <div className="text-left text-sm leading-5 address">
@@ -94,7 +128,7 @@ export default function PreviewQuotation() { // keep the same component name to 
           </div>
         </div>
 
-        <h1 className="text-xl font-bold text-left mb-6 text-[#3b5998] font-heading">
+        <h1 className="text-xl font-bold text-left mb-6 font-heading" style={{ color: headingColor }}>
           Proforma
         </h1>
 

@@ -7,7 +7,9 @@ export default {
     theme: {
       extend: {
         fontFamily: {
+          sans: ['Calibri', 'Inter', 'sans-serif'],
           inter: ['Inter', 'sans-serif'],
+          calibri: ['Calibri', 'sans-serif'],
         },
         colors: {
           brand: "#3b5999",

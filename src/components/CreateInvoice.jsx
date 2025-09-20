@@ -1,4 +1,4 @@
-// CreateInvoice.jsx
+ // src/pages/CreateInvoice.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -231,30 +231,24 @@ export default function CreateInvoice() {
     if (!invoiceTitle.trim()) nextErrors.invoiceTitle = "Enter invoice title.";
     if (!selectedClientId) nextErrors.selectedClientId = "Select a client.";
 
-    // Require at least one service row
     if (services.length === 0) {
       nextErrors.services = "Add at least one service.";
     } else {
-      // Validate each added service row
       services.forEach((s, idx) => {
         const rowErr = {};
         const amt = s?.amount;
 
-        // ✅ Service Name required
         if (!s?.name || (Array.isArray(s.name) && s.name.length === 0)) {
           rowErr.name = "Select at least one service name.";
         }
-
         if (amt === "" || amt === undefined || isNaN(Number(amt))) {
           rowErr.amount = "Enter a valid amount.";
         } else if (Number(amt) <= 0) {
           rowErr.amount = "Amount must be greater than 0.";
         }
-
         if (!String(s?.description || "").trim()) {
           rowErr.description = "Enter a short description.";
         }
-
         if (Object.keys(rowErr).length) {
           nextErrors.serviceRows[idx] = rowErr;
         }
@@ -305,7 +299,7 @@ export default function CreateInvoice() {
       project_id: selectedProject ? selectedProject.value : "",
       invoice_type: yourCompany,
       invoice_title: invoiceTitle,
-      invoice_date: invoiceDate, // YYYY-MM-DD
+      invoice_date: invoiceDate,
       services: sanitizedNow,
       subtotal: Number(subtotalNow.toFixed(2)),
       cgst: Number(cgstNow.toFixed(2)),
@@ -426,7 +420,6 @@ export default function CreateInvoice() {
               value={invoiceTitle}
               onChange={(e) => setInvoiceTitle(e.target.value)}
               aria-invalid={!!errors.invoiceTitle}
-              placeholder="e.g., Creative Services – March"
               style={{
                 width: "100%",
                 padding: "10px",
@@ -567,10 +560,13 @@ export default function CreateInvoice() {
                 <RequiredLabel>Service Amount ₹</RequiredLabel>
                 <input
                   type="number"
+                  min="1"             // ✅ Prevent negative and 0
+                  step="any"
                   value={service.amount ?? ""}
                   onChange={(e) => {
+                    const val = e.target.value;
                     const updated = [...services];
-                    updated[idx].amount = e.target.value;
+                    updated[idx].amount = val === "" ? "" : Math.max(1, Number(val)); // ✅ Force >= 1
                     setServices(updated);
                     setErrors((prev) => {
                       const next = { ...prev };
@@ -656,12 +652,9 @@ export default function CreateInvoice() {
         {/* Totals — show only applicable GST lines */}
         <div style={{ background: "#f9f9f9", padding: "20px", borderRadius: "8px", marginBottom: "20px" }}>
           <p>Subtotal: ₹{formatAmount(subtotal)}</p>
-
-          {/* Only render non-zero GST components */}
           {cgst > 0 && <p>CGST ({cgstRate}%): ₹{formatAmount(cgst)}</p>}
           {sgst > 0 && <p>SGST ({sgstRate}%): ₹{formatAmount(sgst)}</p>}
           {igst > 0 && <p>IGST ({igstRate}%): ₹{formatAmount(igst)}</p>}
-
           <p><b>Total Tax:</b> ₹{formatAmount(tax_amount)}</p>
           <p><b>Total Amount:</b> ₹{formatAmount(grand_total)}</p>
         </div>
@@ -697,13 +690,23 @@ export default function CreateInvoice() {
             opacity: isGeneratingPDF ? 0.7 : 1,
           }}
         >
-          {isGeneratingPDF ? "Processing..." : "Submit Invoice & Generate PDFs"}
+          {isGeneratingPDF ? "Processing..." : "Submit Invoice"}
         </button>
 
         <style jsx>{`
           @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
+          }
+
+          /* ✅ Remove arrows from number inputs (Chrome/Safari/Edge/Opera + Firefox) */
+          input[type=number]::-webkit-inner-spin-button,
+          input[type=number]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+          }
+          input[type=number] {
+            -moz-appearance: textfield;
           }
         `}</style>
       </form>

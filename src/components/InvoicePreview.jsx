@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+// src/pages/InvoicePreview.jsx
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import { doc, getDoc } from "firebase/firestore";
@@ -8,6 +9,7 @@ import jsPDF from "jspdf";
 export default function InvoicePreview() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const previewRef = useRef();
 
   const [invoice, setInvoice] = useState(null);
   const [client, setClient] = useState(null);
@@ -40,118 +42,135 @@ export default function InvoicePreview() {
   };
 
   const handleDownloadTax = async () => {
-    if (!invoice || !client) return;
-    const element = document.querySelector('.preview');
-    const canvas = await html2canvas(element, { scale: 2 });
-    const imgData = canvas.toDataURL('image/png');
-    const doc = new jsPDF();
-    const marginLeft = 20; // Left margin in mm
-    const imgWidth = 170; // Content width in mm
-    const pageHeight = 295; // A4 height in mm
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    if (imgHeight <= pageHeight) {
-      doc.addImage(imgData, 'PNG', marginLeft, 0, imgWidth, imgHeight);
-    } else {
-      const scale = pageHeight / imgHeight;
-      const scaledWidth = imgWidth * scale;
-      doc.addImage(imgData, 'PNG', marginLeft, 0, scaledWidth, pageHeight);
+    if (!invoice || !client || !previewRef.current) return;
+    try {
+      const canvas = await html2canvas(previewRef.current, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = 210;
+      const pdfHeight = 297;
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+      const finalWidth = imgWidth * ratio;
+      const finalHeight = imgHeight * ratio;
+      const x = (pdfWidth - finalWidth) / 2;
+      const y = (pdfHeight - finalHeight) / 2;
+
+      pdf.addImage(imgData, 'PNG', x, y, finalWidth, finalHeight);
+      pdf.save(`${invoice.invoice_id}.pdf`);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
     }
-    doc.save(`${invoice.invoice_id}.pdf`);
   };
 
   const handleDownloadProforma = async () => {
-    if (!invoice || !client) return;
-    const element = document.querySelector('.preview');
-    const canvas = await html2canvas(element, { scale: 2 });
-    const imgData = canvas.toDataURL('image/png');
-    const doc = new jsPDF();
-    const marginLeft = 20; // Left margin in mm
-    const imgWidth = 170; // Content width in mm
-    const pageHeight = 295; // A4 height in mm
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    if (imgHeight <= pageHeight) {
-      doc.addImage(imgData, 'PNG', marginLeft, 0, imgWidth, imgHeight);
-    } else {
-      const scale = pageHeight / imgHeight;
-      const scaledWidth = imgWidth * scale;
-      doc.addImage(imgData, 'PNG', marginLeft, 0, scaledWidth, pageHeight);
+    if (!invoice || !client || !previewRef.current) return;
+    try {
+      // Temporarily change the title to Proforma Invoice
+      const titleElement = previewRef.current.querySelector('h1');
+      const originalTitle = titleElement.textContent;
+      const originalColor = titleElement.style.color;
+      titleElement.textContent = 'Proforma Invoice';
+      // Keep the same color
+
+      const canvas = await html2canvas(previewRef.current, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = 210;
+      const pdfHeight = 297;
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+      const finalWidth = imgWidth * ratio;
+      const finalHeight = imgHeight * ratio;
+      const x = (pdfWidth - finalWidth) / 2;
+      const y = (pdfHeight - finalHeight) / 2;
+
+      pdf.addImage(imgData, 'PNG', x, y, finalWidth, finalHeight);
+      pdf.save(`${invoice.invoice_id}_PROFORMA.pdf`);
+
+      // Restore original title and color
+      titleElement.textContent = originalTitle;
+      titleElement.style.color = originalColor;
+    } catch (error) {
+      console.error('Error generating PDF:', error);
     }
-    doc.save(`${invoice.invoice_id}_PROFORMA.pdf`);
   };
 
   const formatDate = (dateObj) => {
-    const date = new Date(dateObj);
-    const dd = String(date.getDate()).padStart(2, "0");
-    const yyyy = date.getFullYear();
-    const month = date.toLocaleString("default", { month: "long" });
+    const d = new Date(dateObj);
+    if (isNaN(d.getTime())) return "";
+    const dd = String(d.getDate()).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    const month = d.toLocaleString("default", { month: "long" });
     return `${dd} ${month} ${yyyy}`;
   };
 
-  function convertNumberToWords(num) {
-    // Handle negative numbers and zero
-    if (num < 0) return "Minus " + convertNumberToWords(-num);
-    if (num === 0) return "Zero";
+  // ---------- NEW: robust Indian-numbering converter (Rupees & Paise) ----------
+  function numberToWordsINR(amountInput) {
+    const amount = Number(amountInput ?? 0);
+    if (!isFinite(amount)) return "";
 
-    const units = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
-    const teens = ["Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+    // use paise to avoid floating point issues
+    const totalPaise = Math.round(amount * 100);
+    const rupees = Math.floor(totalPaise / 100);
+    const paise = totalPaise % 100;
+
+    const ones = [
+      "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+      "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen",
+      "Sixteen", "Seventeen", "Eighteen", "Nineteen"
+    ];
     const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
-    const scales = ["", "Thousand", "Lakh", "Crore"];
 
-    let result = "";
-    let scaleIndex = 0;
+    const twoDigitWords = (n) => {
+      if (n === 0) return "";
+      if (n < 20) return ones[n];
+      const t = Math.floor(n / 10);
+      const o = n % 10;
+      return `${tens[t]}${o ? " " + ones[o] : ""}`.trim();
+    };
 
-    while (num > 0) {
-      // Get last 3 digits (hundreds, tens, units)
-      let chunk = num % 1000;
-      
-      if (chunk > 0) {
-        let chunkWords = "";
-        
-        // Hundreds
-        if (chunk >= 100) {
-          chunkWords += units[Math.floor(chunk / 100)] + " Hundred ";
-          chunk -= Math.floor(chunk / 100) * 100;
-        }
-        
-        // Tens and units
-        if (chunk > 0) {
-          if (chunk >= 20) {
-            chunkWords += tens[Math.floor(chunk / 10)] + " ";
-            chunk %= 10;
-          }
-          
-          if (chunk > 0) {
-            if (chunk >= 10 && chunk < 20) {
-              chunkWords += teens[chunk - 10] + " ";
-            } else {
-              chunkWords += units[chunk] + " ";
-            }
-          }
-        }
-        
-        // Add scale if needed
-        if (scaleIndex > 0) {
-          chunkWords += scales[scaleIndex] + " ";
-        }
-        
-        // Prepend to result (process from highest scale to lowest)
-        if (result) {
-          result = chunkWords + result;
-        } else {
-          result = chunkWords.trim();
-        }
-      }
-      
-      num = Math.floor(num / 1000);
-      scaleIndex++;
-      
-      // Handle Lakh and Crore scales
-      if (scaleIndex === 2 && num > 0) scaleIndex = 3; // Skip "Thousand" for Lakh
-      if (scaleIndex === 3 && num > 0) scaleIndex = 4; // Skip "Million" for Crore
-    }
+    const threeDigitWords = (n) => {
+      const h = Math.floor(n / 100);
+      const rem = n % 100;
+      let out = "";
+      if (h) out += `${ones[h]} Hundred`;
+      if (rem) out += `${out ? " " : ""}${twoDigitWords(rem)}`;
+      return out.trim();
+    };
 
-    return result.trim();
+    const segmentWords = (n) => {
+      if (n === 0) return "Zero";
+      let out = "";
+
+      const crore = Math.floor(n / 10000000);                 // 1,00,00,000
+      const lakh = Math.floor((n % 10000000) / 100000);       // 1,00,000
+      const thousand = Math.floor((n % 100000) / 1000);       // 1,000
+      const hundred = n % 1000;                               // 0..999
+
+      if (crore)   out += `${threeDigitWords(crore)} Crore`;
+      if (lakh)    out += `${out ? " " : ""}${threeDigitWords(lakh)} Lakh`;
+      if (thousand)out += `${out ? " " : ""}${threeDigitWords(thousand)} Thousand`;
+      if (hundred) out += `${out ? " " : ""}${threeDigitWords(hundred)}`;
+
+      return out.trim();
+    };
+
+    const rupeesWords = `${segmentWords(rupees)} Rupees`;
+    const paiseWords = paise ? ` and ${twoDigitWords(paise)} Paise` : "";
+    return `${rupeesWords}${paiseWords} only`;
   }
+  // ---------------------------------------------------------------------------
 
   if (!invoice || !client) {
     return (
@@ -168,11 +187,6 @@ export default function InvoicePreview() {
   const logoPath = isWT ? "/wt-logo.png" : "/wtx_logo.png";
 
   // ======== AMOUNTS & FORMATTING (always 2 decimals) ========
-  const fmt0 = (n) =>
-    Number(n).toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
   const fmt2 = (n) =>
     Number(n).toLocaleString("en-IN", {
       minimumFractionDigits: 2,
@@ -189,7 +203,6 @@ export default function InvoicePreview() {
   const isIndian = clientCountry === "india";
   const isTelangana = clientState === "telangana";
 
-  // UPDATED RATES (intra: CGST+SGST; inter: IGST 18%; international: 0)
   let cgstRate = 0, sgstRate = 0, igstRate = 0;
   if (isIndian && isTelangana) {
     cgstRate = 9; sgstRate = 9; igstRate = 0;
@@ -199,7 +212,7 @@ export default function InvoicePreview() {
     cgstRate = 0; sgstRate = 0; igstRate = 0;
   }
 
-  // Prefer stored amounts from invoice; otherwise compute from subtotal & rates
+  // Prefer stored amounts; fall back to computed
   const storedCGST = Number(invoice.cgst ?? 0);
   const storedSGST = Number(invoice.sgst ?? 0);
   const storedIGST = Number(invoice.igst ?? 0);
@@ -250,14 +263,12 @@ export default function InvoicePreview() {
         </button>
       </div>
 
-      <div className="max-w-5xl mx-auto p-6">
+      <div ref={previewRef} className="max-w-5xl mx-auto p-6">
         {/* logo + address */}
         <div className="mb-3">
           <img src={logoPath} alt="Company Logo" className="h-16" />
-          <div className="text-left text-[12px] leading-none">
-            <p className="mb-0">19/B, 3rd Floor, Progressive Tower, 100 Ft Road,</p>
-            <p className="mb-0">Siddhi Vinayak Nagar, Madhapur,</p>
-            <p className="mb-0">Hyderabad, Telangana - 500081</p>
+          <div className="text-left text-[12px] leading-1">
+            <p>19/B, 3rd Floor, Progressive Tower<br />100 Ft Road, Siddhi Vinayak Nagar<br />Madhapur, Hyderabad, Telangana - 500081</p>
           </div>
         </div>
 
@@ -267,138 +278,143 @@ export default function InvoicePreview() {
         </h1>
 
         {/* Top info table */}
-        <table className="w-full border border-gray-300 border-collapse mb-4">
+        <table className="w-full border border-gray-100 border-collapse mb-1">
           <tbody>
             <tr>
-              <td className="border border-gray-300 p-2 font-medium">
-                <b>{isWT ? "Walls And Trends" : "Walls And Trends"}</b>
+              <td className="border border-gray-100 p-0 font-medium">
+                {isWT ? "Walls And Trends" : "Walls And Trends"}
+
               </td>
-              <td className="border border-gray-300 p-2 font-medium">
-                <b>GST IN:</b> {isWT ? "36AACFW6827B1Z8" : "36AAACW8991C1Z9"}
+              <td className="border border-gray-100 p-0 font-medium">
+                GST IN: {isWT ? "36AACFW6827B1Z8" : "36AAACW8991C1Z9"}
               </td>
             </tr>
             <tr>
-              <td className="border border-gray-300 p-2">
-                <b>Invoice Number:</b> {invoice.invoice_id}
+              <td className="border border-gray-100 p-0">
+                Invoice Number: {invoice.invoice_id}
               </td>
-              <td className="border border-gray-300 p-2">
-                <b>Invoice Date:</b>{" "}
-                {invoice.created_at?.toDate
+              <td className="border border-gray-100 p-0">
+                Invoice Date:{" "}
+                {invoice.invoice_date
+                  ? formatDate(invoice.invoice_date)
+                  : invoice.created_at?.toDate
                   ? formatDate(invoice.created_at.toDate())
-                  : formatDate(invoice.created_at || invoice.invoice_date)}
+                  : ""}
               </td>
             </tr>
             <tr>
-              <td className="border border-gray-300 p-2">
-                <b>Invoice Title:</b> {invoice.invoice_title || lineItems[0]?.name}
+              <td className="border border-gray-100 p-0">
+                Invoice Title: {invoice.invoice_title || lineItems[0]?.name}
               </td>
-              <td className="border border-gray-300 p-2 font-semibold">
-                <b>Total Cost:</b> INR {fmt0(total)}
+              <td className="border border-gray-100 p-0 font-semibold">
+                Total Cost: INR {fmt2(total)}
               </td>
             </tr>
           </tbody>
         </table>
 
        
-        <table className="w-full border border-gray-300 border-collapse mb-4">
+
+        {/* Customer block */}
+        <table className="w-full border border-gray-100 border-collapse mb-1">
           <tbody>
             <tr>
-              <td className="border border-gray-300 p-2">
-                <b>Customer Name:</b> {client.client_name}
+              <td className="border border-gray-100 p-0">
+                Customer Name: {client.client_name}
               </td>
-              <td className="border border-gray-300 p-2">
-                <b>Customer Address:</b> {client.address}
+              <td className="border border-gray-100 p-0">
+                Customer Address: {client.address}
               </td>
             </tr>
             <tr>
-              <td className="border border-gray-300 p-2" colSpan={2}>
-                <b>Customer GST IN:</b> {(client.gst_number || "").trim() || "NA"}
+              <td className="border border-gray-100 p-0" colSpan={2}>
+                Customer GST IN: {(client.gst_number || "").trim() || "NA"}
               </td>
             </tr>
           </tbody>
         </table>
 
         {/* Items table */}
-        <table className="w-full border border-gray-300 border-collapse mb-2 text-center">
+        <table className="w-full border border-gray-100 border-collapse mb-1 text-center">
           <thead className="bg-gray-100 text-black">
             <tr>
-              <th className="p-2 border border-gray-300">HSN / SAC Code</th>
-              <th className="p-2 border border-gray-300">Item</th>
-              <th className="p-2 border border-gray-300">Description</th>
-              <th className="p-2 border border-gray-300">Amount (INR)</th>
+              <th className="p-0 border border-gray-100">HSN / SAC Code</th>
+              <th className="p-0 border border-gray-100">Item</th>
+              <th className="p-0 border border-gray-100">Description</th>
+              <th className="p-0 border border-gray-100">Amount (INR)</th>
             </tr>
           </thead>
           <tbody>
             {lineItems.map((it, idx) => (
               <tr key={idx}>
-                <td className="border border-gray-300 p-2">9983</td>
-                <td className="border border-gray-300 p-2">{it.name}</td>
-                <td className="border border-gray-300 p-2">{it.description}</td>
-                <td className="border border-gray-300 p-2 text-center pr-4">{fmt0(it.amount)}</td>
+                <td className="border border-gray-100 p-0">9983</td>
+                <td className="border border-gray-100 p-0">{it.name}</td>
+                <td className="border border-gray-100 p-0">{it.description}</td>
+                <td className="border border-gray-100 p-0 text-center pr-4">{fmt2(it.amount)}</td>
               </tr>
             ))}
 
             {/* Gross */}
             <tr>
-              <td className="border border-gray-300 p-2 text-center" colSpan={3}>
+              <td className="border border-gray-100 p-0 text-center" colSpan={3}>
                 Gross
               </td>
-              <td className="border border-gray-300 p-2 text-center pr-4">{fmt0(subtotal)}</td>
+              <td className="border border-gray-100 p-0 text-center pr-4">{fmt2(subtotal)}</td>
             </tr>
 
             {/* === TAX: show ONLY the applicable rows === */}
             {isIndian && isTelangana && (
               <>
                 <tr>
-                  <td className="border border-gray-300 p-2 text-center" colSpan={3}>
+                  <td className="border border-gray-100 p-0 text-center" colSpan={3}>
                     CGST @ 9%
                   </td>
-                  <td className="border border-gray-300 p-2 text-center pr-4">{fmt2(cgstAmount)}</td>
+                  <td className="border border-gray-100 p-0 text-center pr-4">{fmt2(cgstAmount)}</td>
                 </tr>
                 <tr>
-                  <td className="border border-gray-300 p-2 text-center" colSpan={3}>
+                  <td className="border border-gray-100 p-0 text-center" colSpan={3}>
                     SGST @ 9%
                   </td>
-                  <td className="border border-gray-300 p-2 text-center pr-4">{fmt2(sgstAmount)}</td>
+                  <td className="border border-gray-100 p-0 text-center pr-4">{fmt2(sgstAmount)}</td>
                 </tr>
               </>
             )}
 
             {isIndian && !isTelangana && (
               <tr>
-                <td className="border border-gray-300 p-2 text-center" colSpan={3}>
+                <td className="border border-gray-100 p-0 text-center" colSpan={3}>
                   IGST @ 18%
                 </td>
-                <td className="border border-gray-300 p-2 text-center pr-4">{fmt2(igstAmount)}</td>
+                <td className="border border-gray-100 p-0 text-center pr-4">{fmt2(igstAmount)}</td>
               </tr>
             )}
 
             {!isIndian && (
               <tr>
-                <td className="border border-gray-300 p-2 text-center" colSpan={3}>
+                <td className="border border-gray-100 p-0 text-center" colSpan={3}>
                   IGST @ 0%
                 </td>
-                <td className="border border-gray-300 p-2 text-center pr-4">{fmt2(igstAmount)}</td>
+                <td className="border border-gray-100 p-0 text-center pr-4">{fmt2(igstAmount)}</td>
               </tr>
             )}
 
             {/* Total */}
             <tr className="font-bold">
-              <td className="border border-gray-300 p-2 text-center text-[#3b5998]" colSpan={3}>
+              <td className="border border-gray-100 p-0 text-center text-[#3b5998]" colSpan={3}>
                 Total
               </td>
-              <td className="border border-gray-300 p-2 text-center pr-4 text-[#3b5998]">
-                {fmt0(total)}
+              <td className="border border-gray-100 p-0 text-center pr-4 text-[#3b5998]">
+                {fmt2(total)}
               </td>
             </tr>
 
-            {/* Words row */}
+            {/* Words row (uses new converter) */}
             <tr>
-              <td className="border border-gray-300 p-2 text-center" colSpan={3}>
+              <td className="border border-gray-100 p-0 text-center" colSpan={3}>
                 <span className="italic">(Total Amount In Words)</span>
               </td>
-              <td className="border border-gray-300 p-2 text-center pr-4">
-                {convertNumberToWords(Number(total).toFixed(0))} only
+              <td className="border border-gray-100 p-0 text-center pr-4">
+                {numberToWordsINR(total)}
               </td>
             </tr>
           </tbody>
@@ -408,40 +424,40 @@ export default function InvoicePreview() {
         <h2 className="font-semibold mb-2" style={{ color: headingColor }}>
           Bank Details
         </h2>
-        <table className="w-full border border-gray-300 border-collapse mb-6 text-center">
+        <table className="w-full border border-gray-100 border-collapse mb-1 text-center">
           <tbody>
             <tr>
-              <td className="border border-gray-300 p-2 w-1/3"><b>Bank Name</b></td>
-              <td className="border border-gray-300 p-2">Yes Bank</td>
+              <td className="border border-gray-100 p-0 w-1/3">Bank Name</td>
+              <td className="border border-gray-100 p-0">Yes Bank</td>
             </tr>
             <tr>
-              <td className="border border-gray-300 p-2"><b>Beneficiary Name</b></td>
-              <td className="border border-gray-300 p-2">{isWT ? "Walls And Trends" : "Walls And Trends"}</td>
+              <td className="border border-gray-100 p-0">Beneficiary Name</td>
+              <td className="border border-gray-100 p-0">{isWT ? "Walls And Trends" : "Walls And Trends"}</td>
             </tr>
             <tr>
-              <td className="border border-gray-300 p-2"><b>Account Number</b></td>
-              <td className="border border-gray-300 p-2">000663300001713</td>
+              <td className="border border-gray-100 p-0">Account Number</td>
+              <td className="border border-gray-100 p-0">000663300001713</td>
             </tr>
             <tr>
-              <td className="border border-gray-300 p-2"><b>Account Type</b></td>
-              <td className="border border-gray-300 p-2">Current Account</td>
+              <td className="border border-gray-100 p-0">Account Type</td>
+              <td className="border border-gray-100 p-0">Current Account</td>
             </tr>
             <tr>
-              <td className="border border-gray-300 p-2"><b>IFSC Code</b></td>
-              <td className="border border-gray-300 p-2">YESB0000006</td>
+              <td className="border border-gray-100 p-0">IFSC Code</td>
+              <td className="border border-gray-100 p-0">YESB0000006</td>
             </tr>
             <tr>
-              <td className="border border-gray-300 p-2"><b>Bank Branch</b></td>
-              <td className="border border-gray-300 p-2">Somajiguda</td>
+              <td className="border border-gray-100 p-0">Bank Branch</td>
+              <td className="border border-gray-100 p-0">Somajiguda</td>
             </tr>
             <tr>
-              <td className="border border-gray-300 p-2"><b>City</b></td>
-              <td className="border border-gray-300 p-2">Hyderabad</td>
+              <td className="border border-gray-100 p-0">City</td>
+              <td className="border border-gray-100 p-0">Hyderabad</td>
             </tr>
           </tbody>
         </table>
 
-        <p><b>NOTE:</b> No files will be delivered until the final payment is made.</p>
+        <p>NOTE: No files will be delivered until the final payment is made.</p>
 
         <div className="flex justify-start mt-10">
           <div className="text-center">
@@ -460,4 +476,3 @@ export default function InvoicePreview() {
     </div>
   );
 }
- 

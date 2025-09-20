@@ -18,6 +18,13 @@ const RequiredLabel = ({ children }) => (
   </span>
 );
 
+// ✅ Amount formatter (Indian style)
+const formatAmount = (num) =>
+  new Intl.NumberFormat("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(isNaN(num) ? 0 : num));
+
 export default function CreateProforma() {
   const [yourCompany, setYourCompany] = useState("");
   const [clients, setClients] = useState([]);
@@ -121,8 +128,9 @@ export default function CreateProforma() {
 
     services.forEach((s, i) => {
       if (!s.name.length) newErrors[`serviceName_${i}`] = "Select at least one service";
-      if (!s.description.trim()) newErrors[`serviceDesc_${i}`] = "Description required";
-      if (!s.amount) newErrors[`serviceAmount_${i}`] = "Amount required";
+      if (!String(s.description || "").trim()) newErrors[`serviceDesc_${i}`] = "Description required";
+      const amt = Number(s.amount);
+      if (isNaN(amt) || amt <= 0) newErrors[`serviceAmount_${i}`] = "Amount must be greater than 0.";
     });
 
     setErrors(newErrors);
@@ -139,9 +147,13 @@ export default function CreateProforma() {
       proforma_type: yourCompany,
       proforma_title: proformaTitle,
       proforma_date: proformaDate,
-      services: services,
-      subtotal: Number(amount),
-      total_amount: amount,
+      services: services.map((s, i) => ({
+        name: (Array.isArray(s.name) ? s.name : []).join(", "),
+        description: String(s.description || ""),
+        amount: Number(s.amount || 0),
+      })),
+      subtotal: Number(amount.toFixed(2)),
+      total_amount: Number(amount.toFixed(2)),
       payment_status: paymentStatus,
       pdf_url: "",
       created_at: new Date(),
@@ -158,7 +170,8 @@ export default function CreateProforma() {
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "#f3f4f6", display: "flex", justifyContent: "center", padding: "2rem" }}>
-      <form onSubmit={handleSubmit} noValidate style={{ background: "#fff", borderRadius: "10px", padding: "30px", width: "100%", maxWidth: "700px", boxShadow: "0 4px 10px rgba(0,0,0,0.1)" }}>
+      <form onSubmit={handleSubmit} noValidate
+        style={{ background: "#fff", borderRadius: "10px", padding: "30px", width: "100%", maxWidth: "700px", boxShadow: "0 4px 10px rgba(0,0,0,0.1)" }}>
         <h2 style={{ fontSize: "24px", fontWeight: "bold", textAlign: "center", marginBottom: "30px" }}>
           Create Proforma
         </h2>
@@ -238,10 +251,10 @@ export default function CreateProforma() {
             <Select
               isMulti
               options={serviceOptions}
-              value={service.name.map((n) => serviceOptions.find((opt) => opt.value === n))}
+              value={(service.name || []).map((n) => serviceOptions.find((opt) => opt.value === n))}
               onChange={(selectedOptions) => {
                 const updated = [...services];
-                updated[idx].name = selectedOptions.map((opt) => opt.value);
+                updated[idx].name = (selectedOptions || []).map((opt) => opt.value);
                 setServices(updated);
               }}
               placeholder="Select Service(s)"
@@ -272,10 +285,13 @@ export default function CreateProforma() {
             <RequiredLabel>Service Amount ₹</RequiredLabel>
             <input
               type="number"
+              min="1"        // ✅ block negative and 0
+              step="any"
               value={service.amount}
               onChange={(e) => {
+                const val = e.target.value;
                 const updated = [...services];
-                updated[idx].amount = e.target.value;
+                updated[idx].amount = val === "" ? "" : Math.max(1, Number(val)); // ✅ keep empty or >=1
                 setServices(updated);
               }}
               style={{ width: "100%", padding: "10px", border: `1px solid ${errors[`serviceAmount_${idx}`] ? "#d32f2f" : "#ccc"}` }}
@@ -307,13 +323,25 @@ export default function CreateProforma() {
         </div>
 
         <div style={{ background: "#f9f9f9", padding: "20px", borderRadius: "8px", marginBottom: "20px" }}>
-          <p>Subtotal: ₹{amount.toFixed(2)}</p>
-          <p><b>Total Amount:</b> ₹{amount.toFixed(2)}</p>
+          <p>Subtotal: ₹{formatAmount(amount)}</p>
+          <p><b>Total Amount:</b> ₹{formatAmount(amount)}</p>
         </div>
 
         <button type="submit" style={{ width: "100%", padding: "15px", background: "#000000", color: "#fff", borderRadius: "5px", fontWeight: "bold", fontSize: "16px" }}>
           Submit Proforma
         </button>
+
+        {/* ✅ Remove arrows from number inputs */}
+        <style jsx>{`
+          input[type=number]::-webkit-inner-spin-button,
+          input[type=number]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+          }
+          input[type=number] {
+            -moz-appearance: textfield;
+          }
+        `}</style>
       </form>
     </div>
   );

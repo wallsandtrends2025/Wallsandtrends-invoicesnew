@@ -3,15 +3,17 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
 export async function generateProformaInvoicePDF(invoice, client) {
-  const doc = new jsPDF();
+  // Use A4 for consistent sizing with regular invoices
+  const doc = new jsPDF('p', 'mm', 'a4');
 
-  // ---- Base fonts & brand colors ----
+  // ---------- Base fonts & colors ----------
   doc.setFont("helvetica", "normal");
-  const BLUE   = [59, 89, 152];   // WT heading color
-  const YELLOW = [255, 222, 88];  // WTX heading color
+  const BLUE   = [59, 89, 152];      // WT heading color
+  const YELLOW = [255, 222, 88];     // WTX heading color
   const BLACK  = [0, 0, 0];
+  const GRAY   = [169, 169, 169];    // Gray border color
 
-  // ---- Brand / assets ----
+  // ---------- Brand / assets ----------
   const isWT  = invoice.invoice_type === "WT"  || invoice.invoice_type === "WTPL";
   const isWTX = invoice.invoice_type === "WTX" || invoice.invoice_type === "WTXPL";
   const BRAND = isWTX ? YELLOW : BLUE;
@@ -22,18 +24,19 @@ export async function generateProformaInvoicePDF(invoice, client) {
   const logoPath = `${window.location.origin}${isWT ? "/wt-logo.png" : "/wtx_logo.png"}`;
   const signaturePath = `${window.location.origin}/csh-sign.PNG`;
 
-  // ---- Helpers ----
+  // ---------- Helpers ----------
   const safeToDate = (d) => {
     try {
       if (typeof d?.toDate === "function") return d.toDate();
       if (d instanceof Date) return d;
       return new Date(d);
-    } catch { return new Date(); }
+    } catch {
+      return new Date();
+    }
   };
 
   async function loadImage(path) {
     try {
-      console.log('🖼️ Loading image:', path);
       const res = await fetch(path);
       if (!res.ok) {
         console.warn(`Image fetch failed: ${res.status} ${res.statusText} for ${path}`);
@@ -42,14 +45,8 @@ export async function generateProformaInvoicePDF(invoice, client) {
       const blob = await res.blob();
       return await new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onloadend = () => {
-          console.log('✅ Image loaded successfully:', path);
-          resolve(reader.result);
-        };
-        reader.onerror = () => {
-          console.error('❌ FileReader error for:', path);
-          reject(new Error('FileReader failed'));
-        };
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('FileReader failed'));
         reader.readAsDataURL(blob);
       });
     } catch (e) {
@@ -58,29 +55,48 @@ export async function generateProformaInvoicePDF(invoice, client) {
     }
   }
 
-  // grid constants
-  const MARGIN_L = 15;
-  const COL_W = 95;
-  const COL1_X = MARGIN_L;          // 15
-  const COL2_X = MARGIN_L + COL_W;  // 110
-  const FULL_W = COL_W * 2;         // 190
-  const LINE_H = 4.2;
-  const PAD = 2.0;
+  // --- layout constants for A4 (grid) - centered for equal left/right margins ---
+  const PAGE_WIDTH = 210;  // A4 width in mm
+  const PAGE_HEIGHT = 297; // A4 height in mm
+  const CONTENT_WIDTH = 180;  // Total width for content (2 columns + spacing)
+  const MARGIN_L = (PAGE_WIDTH - CONTENT_WIDTH) / 2;  // Center the content
+  const COL_W = 85;  // Column width to fit within centered layout
+  const COL1_X = MARGIN_L;
+  const COL2_X = MARGIN_L + COL_W + 10;  // Added 10mm spacing between columns
+  const FULL_W = COL_W * 2 + 10;  // Account for spacing between columns
+  const LINE_H = 5.5;  // Standard line height for A4
+  const PAD = 8.0;    // Standard padding for A4
 
+  // Debug logging for layout constants
+  console.log('=== Proforma Invoice PDF Debug - Layout Constants ===');
+  console.log('PAGE_WIDTH:', PAGE_WIDTH);
+  console.log('CONTENT_WIDTH:', CONTENT_WIDTH);
+  console.log('MARGIN_L:', MARGIN_L);
+  console.log('COL_W:', COL_W);
+  console.log('COL1_X:', COL1_X);
+  console.log('COL2_X:', COL2_X);
+  console.log('FULL_W:', FULL_W);
+  console.log('LINE_H:', LINE_H);
+  console.log('PAD:', PAD);
+
+  // --- draw helpers with auto-wrap & clean grid ---
   function drawPlainCell({ x, y, w, value }) {
-    doc.setFontSize(10);
+    doc.setFontSize(10);  // Standard for A4
     doc.setTextColor(...BLACK);
+
     const lines = doc.splitTextToSize(String(value ?? ""), w - PAD * 2);
-    const h = Math.max(7, PAD + (lines.length * LINE_H) + PAD);
+    const cellHeight = Math.max(8, PAD + (lines.length * LINE_H) + PAD);  // Standard minimum height
+
     doc.setDrawColor(...BLACK);
     doc.setLineWidth(0.3);
-    doc.rect(x, y, w, h);
+    doc.rect(x, y, w, cellHeight);
+
     doc.text(lines, x + PAD, y + PAD + LINE_H);
-    return h;
+    return cellHeight;
   }
 
   function drawLabeledCell({ x, y, w, label, value }) {
-    doc.setFontSize(10);
+    doc.setFontSize(10);  // Standard for A4
     doc.setTextColor(...BLACK);
 
     doc.setFont("helvetica", "bold");
@@ -88,37 +104,42 @@ export async function generateProformaInvoicePDF(invoice, client) {
     const labelWidth = doc.getTextWidth(labelText + " ");
 
     const valueStartX = x + PAD + labelWidth + 1;
-    const usableFirstLineWidth = Math.max(10, w - (labelWidth + PAD * 2 + 1));
+    const usableFirstLineWidth = Math.max(12, w - (labelWidth + PAD * 2 + 1));  // Increased minimum width
 
     doc.setFont("helvetica", "normal");
     const rawValue = String(value ?? "");
-    const first = (doc.splitTextToSize(rawValue, usableFirstLineWidth)[0] ?? "");
-    const restText = rawValue.slice(first.length).trim();
-    const rest = restText ? doc.splitTextToSize(restText, w - PAD * 2) : [];
-    const totalLines = 1 + rest.length;
+    const firstLineArr = doc.splitTextToSize(rawValue, usableFirstLineWidth);
+    const firstLine = firstLineArr[0] ?? "";
+    const restText = rawValue.slice(firstLine.length).trim();
+    const restLines = restText ? doc.splitTextToSize(restText, w - PAD * 2) : [];
+    const totalLines = 1 + restLines.length;
 
-    const h = Math.max(7, PAD + (totalLines * LINE_H) + PAD);
+    const cellHeight = Math.max(9, PAD + (totalLines * LINE_H) + PAD);  // Increased minimum height
 
-    doc.setDrawColor(...BLACK);
+    doc.setDrawColor(...GRAY);
     doc.setLineWidth(0.3);
-    doc.rect(x, y, w, h);
+    doc.rect(x, y, w, cellHeight);
 
     const baseY = y + PAD + LINE_H;
     doc.setFont("helvetica", "bold");
     doc.text(labelText, x + PAD, baseY);
     doc.setFont("helvetica", "normal");
-    doc.text(first, valueStartX, baseY);
-    if (rest.length) doc.text(rest, x + PAD, baseY + LINE_H);
+    doc.text(firstLine, valueStartX, baseY);
 
-    return h;
+    if (restLines.length) {
+      const restY = baseY + LINE_H;
+      doc.text(restLines, x + PAD, restY);
+    }
+
+    return cellHeight;
   }
 
   function drawTwoColRow(y, left, right, { leftIsPlain = false, rightIsPlain = false } = {}) {
-    const lh = leftIsPlain  ? drawPlainCell({ x: COL1_X, y, w: COL_W, value: left.value })
-                            : drawLabeledCell({ x: COL1_X, y, w: COL_W, ...left });
-    const rh = rightIsPlain ? drawPlainCell({ x: COL2_X, y, w: COL_W, value: right.value })
-                            : drawLabeledCell({ x: COL2_X, y, w: COL_W, ...right });
-    return y + Math.max(lh, rh);
+    const leftH  = leftIsPlain  ? drawPlainCell({ x: COL1_X, y, w: COL_W, value: left.value })
+                                : drawLabeledCell({ x: COL1_X, y, w: COL_W, ...left });
+    const rightH = rightIsPlain ? drawPlainCell({ x: COL2_X, y, w: COL_W, value: right.value })
+                                : drawLabeledCell({ x: COL2_X, y, w: COL_W, ...right });
+    return y + Math.max(leftH, rightH);
   }
 
   function drawFullWidthRow(y, label, value) {
@@ -126,30 +147,28 @@ export async function generateProformaInvoicePDF(invoice, client) {
     return y + h;
   }
 
-  // ---- Header ----
-  const logo = await loadImage(logoPath);
-  const sign = await loadImage(signaturePath);
-  if (logo) {
-    const ext = (logoPath.split(".").pop() || "").toLowerCase();
-    const fmt = ext === "webp" ? "WEBP" : "PNG";
-    doc.addImage(logo, fmt, 15, 10, 30, 18);
-  }
+  // Load images
+  const logoBase64 = await loadImage(logoPath);
+  const signatureBase64 = await loadImage(signaturePath);
+
+  if (logoBase64) doc.addImage(logoBase64, "PNG", MARGIN_L, 10, 30, 18);
 
   // Address
-  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(12);  // Standard for A4
   doc.setTextColor(...BLACK);
-  doc.text("19/B, 3rd Floor, Progressive Tower, 100 Ft Road,", 15, 32);
-  doc.text("Siddhi Vinayak Nagar, Madhapur,", 15, 37);
-  doc.text("Hyderabad, Telangana - 500081", 15, 42);
+  doc.text("19/B, 3rd Floor, Progressive Tower, 100 Ft Road,", MARGIN_L, 32);
+  doc.text("Siddhi Vinayak Nagar, Madhapur,", MARGIN_L, 37);
+  doc.text("Hyderabad, Telangana - 500081", MARGIN_L, 42);
 
-  // Heading
-  doc.setFontSize(16);
-  doc.setFont("helvetica", "bold");
+  // Heading - Changed from "Tax Invoice" to "Proforma Invoice"
+  doc.setFontSize(18);  // Standard for A4
+  doc.setFont("helvetica", "Bold");
   doc.setTextColor(...BRAND);
-  doc.text("Proforma Invoice", 15, 52);
+  doc.text("Proforma Invoice", MARGIN_L, 52);
 
-  // ---- Company row (name / GST IN) ----
-  doc.setFontSize(10);
+  // ---------- Company row ----------
+  doc.setFontSize(12);  // Standard for A4
   doc.setTextColor(...BLACK);
   let y = 55;
 
@@ -160,7 +179,7 @@ export async function generateProformaInvoicePDF(invoice, client) {
     { leftIsPlain: true, rightIsPlain: false }
   );
 
-  // ---- Metadata rows ----
+  // ---------- Metadata rows ----------
   y = drawTwoColRow(y,
     { label: "Invoice Number:", value: invoice.invoice_id },
     { label: "Invoice Date:",   value: formatDate(safeToDate(invoice.created_at || invoice.invoice_date)) }
@@ -173,11 +192,16 @@ export async function generateProformaInvoicePDF(invoice, client) {
     { label: "Total Cost:",    value: `INR ${Number(invoice.total_amount || 0).toLocaleString("en-IN")}` }
   );
 
-  // Summary line
-  const summary = `This invoice prepared by Walls & Trends (${invoice.invoice_type}) includes ${titleValue} for ${client.client_name || "client"}.`;
-  y = drawFullWidthRow(y, "", summary);
+  // Summary line (plain text, no box to match preview)
+  const metaNote = `This invoice prepared by Walls & Trends (${invoice.invoice_type}) includes ${titleValue} for ${client.client_name || "client"}.`;
+  doc.setFontSize(10);  // Standard for A4
+  doc.setTextColor(...BLACK);
+  const lines = doc.splitTextToSize(metaNote, FULL_W - PAD * 2);
+  doc.text(lines, COL1_X + PAD, y + PAD + LINE_H);
+  const metaHeight = PAD + (lines.length * LINE_H) + PAD;
+  y += metaHeight + 3;
 
-  // ---- Customer details ----
+  // ---------- Customer details ----------
   y += 3;
   y = drawTwoColRow(y,
     { label: "Customer Name:",    value: client.client_name || "N/A" },
@@ -185,22 +209,23 @@ export async function generateProformaInvoicePDF(invoice, client) {
   );
   y = drawFullWidthRow(y, "Customer GST IN:", (client.gst_number || "").trim() || "NA");
 
-  // ---- Items & GST table ----
-  const fmt0 = (n) => Number(n || 0).toLocaleString("en-IN"); // no decimals
+  // ---------- Services + GST table ----------
+  const fmt0 = (n) => Number(n || 0).toLocaleString("en-IN"); // Indian grouping, no decimals
 
-  // Build service rows (supports array or legacy single service)
-  const serviceRows = buildServiceRowsNoDecimals(invoice, fmt0);
+  // Service line(s)
+  const servicesBodyRows = buildServiceRowsNoDecimals(invoice, fmt0);
 
-  // === GST LOGIC (mirrors CreateInvoice & InvoicePreview) ===
+  // === GST LOGIC (exactly matches CreateInvoice & InvoicePreview) ===
   const COMPANY_STATE = "telangana";
   const COMPANY_COUNTRY = "india";
   const toLower = (s) => (s || "").toString().trim().toLowerCase();
+
   const clientCountry = toLower(client.country);
   const clientState   = toLower(client.state);
   const isIndian      = clientCountry === COMPANY_COUNTRY;
   const isTelangana   = clientState === COMPANY_STATE;
 
-  // Statutory rates
+  // Determine statutory rates
   let cgstRate = 0, sgstRate = 0, igstRate = 0;
   if (isIndian && isTelangana) {
     cgstRate = 9; sgstRate = 9; igstRate = 0;          // intra-state
@@ -210,46 +235,69 @@ export async function generateProformaInvoicePDF(invoice, client) {
     cgstRate = 0; sgstRate = 0; igstRate = 0;          // international
   }
 
-  const subtotal = Number(invoice.subtotal) || calcSubtotalFromServices(invoice);
-  const explicitCGST = Number(invoice.cgst || 0);
-  const explicitSGST = Number(invoice.sgst || 0);
-  const explicitIGST = Number(invoice.igst || 0);
+  const subtotal  = Number(invoice.subtotal) || 0;
+  const storedCGST = Number(invoice.cgst ?? 0);
+  const storedSGST = Number(invoice.sgst ?? 0);
+  const storedIGST = Number(invoice.igst ?? 0);
 
-  // If explicit split present, use it. Otherwise compute from rates.
-  const cgst = explicitCGST || +(subtotal * (cgstRate / 100)).toFixed(2);
-  const sgst = explicitSGST || +(subtotal * (sgstRate / 100)).toFixed(2);
-  const igst = explicitIGST || +(subtotal * (igstRate / 100)).toFixed(2);
+  // Prefer stored values when present; otherwise compute from rates
+  const cgstAmount = storedCGST || Math.round((subtotal * (cgstRate / 100)) * 100) / 100;
+  const sgstAmount = storedSGST || Math.round((subtotal * (sgstRate / 100)) * 100) / 100;
+  const igstAmount = storedIGST || Math.round((subtotal * (igstRate / 100)) * 100) / 100;
 
-  const totalTax = cgst + sgst + igst;
-  const total    = Number(invoice.total_amount || 0) || +(subtotal + totalTax).toFixed(2);
+  const totalTax   = cgstAmount + sgstAmount + igstAmount;
+  const calculatedTotal = Math.round((subtotal + totalTax) * 100) / 100; // Preserve 2 decimal places
 
-  // Build tax rows with explicit rate labels
+  // Preserve exact decimal precision from invoice.total_amount
+  let total;
+  if (invoice.total_amount !== undefined && invoice.total_amount !== null) {
+    total = parseFloat(invoice.total_amount.toString());
+  } else {
+    total = calculatedTotal;
+  }
+
+  // Build summary rows (only show applicable rows)
   const taxRows =
     isIndian && isTelangana
       ? [
-          [`CGST @ ${cgstRate}%`, fmt0(cgst)],
-          [`SGST @ ${sgstRate}%`, fmt0(sgst)],
+          [`CGST @ ${cgstRate}%`, fmt0(cgstAmount)],
+          [`SGST @ ${sgstRate}%`, fmt0(sgstAmount)],
         ]
       : [
-          [`IGST @ ${igstRate}%`, fmt0(igst)],   // covers inter-state (18%) & international (0%)
+          [`IGST @ ${igstRate}%`, fmt0(igstAmount)],   // covers inter-state (18%) & international (0%)
         ];
 
   const SUMMARY_ROW_COUNT = 1 /*Gross*/ + taxRows.length + 1 /*Total*/;
 
+  // Compose table body:
   const tableBody = [
-    ...serviceRows,
+    ...servicesBodyRows,
+
+    // First summary row: create tall empty boxes in col 1 & 2 via rowSpan
     [
       { content: "", rowSpan: SUMMARY_ROW_COUNT, styles: { halign: "center", valign: "middle" } },
       { content: "", rowSpan: SUMMARY_ROW_COUNT, styles: { halign: "center", valign: "middle" } },
       "Gross",
       fmt0(subtotal),
     ],
+
+    // Tax rows (only 2 cells because col 1 & 2 are occupied by the rowSpan)
     ...taxRows.map(([label, amt]) => [label, amt]),
+
+    // Final summary row (Total)
     [
       { content: "Total", styles: { fontStyle: "bold", halign: "center" } },
       { content: fmt0(total), styles: { fontStyle: "bold", halign: "center" } },
     ],
   ];
+
+  // Debug logging for table positioning
+  console.log('=== Proforma Invoice PDF Debug - Table Configuration ===');
+  console.log('Table startY:', y + 5);
+  console.log('Table column widths:', [45, 45, 45, 45]);
+  console.log('Table total width:', 45 * 4);
+  console.log('Available content width:', CONTENT_WIDTH);
+  console.log('Table left margin (should match COL1_X):', COL1_X);
 
   autoTable(doc, {
     startY: y + 5,
@@ -261,58 +309,73 @@ export async function generateProformaInvoicePDF(invoice, client) {
       textColor: BLACK,
       fontStyle: "bold",
       halign: "center",
-      lineColor: BLACK,
+      lineColor: GRAY,
       lineWidth: 0.3,
       font: "helvetica",
     },
     styles: {
-      fontSize: 10,
+      fontSize: 10,  // Standard for A4
       font: "helvetica",
       textColor: BLACK,
       halign: "center",
       valign: "middle",
-      lineColor: BLACK,
-      lineWidth: 0.3,
-      cellPadding: { top: 1.2, right: 2, bottom: 1.2, left: 2 },
-      overflow: "linebreak",
-      minCellHeight: 6,
+      lineColor: GRAY,
+      lineWidth: 0.3,  // Standard for A4
+      cellPadding: 3,   // Standard padding for A4
     },
     bodyStyles: { textColor: BLACK },
     columnStyles: {
-      0: { cellWidth: 47.5, halign: "center" },
-      1: { cellWidth: 47.5, halign: "center" },
-      2: { cellWidth: 47.5, halign: "center" },
-      3: { cellWidth: 47.5, halign: "center" },
+      0: { cellWidth: 45, halign: "center" }, // HSN - standard for A4
+      1: { cellWidth: 45, halign: "center" }, // Item - standard for A4
+      2: { cellWidth: 45, halign: "center" }, // Description - standard for A4
+      3: { cellWidth: 45, halign: "center" }, // Amount - standard for A4
     }
   });
 
-  // ---- Amount in words ----
-  const amountWords = convertNumberToWords(Math.floor(total));
+  // Debug logging after table creation
+  console.log('Table finalY after creation:', doc.lastAutoTable.finalY);
+
+  // ---------- Amount in words ----------
+  // Ensure we have exactly 2 decimal places for precise calculation
+  const preciseTotal = Math.round(total * 100) / 100;
+  const rupeesPart = Math.floor(preciseTotal);
+  const paisePart = Math.round((preciseTotal - rupeesPart) * 100);
+
+  let amountWords = convertNumberToWords(rupeesPart);
+
+  if (paisePart > 0) {
+    const paiseWords = convertNumberToWords(paisePart);
+    amountWords += ` and ${paiseWords} Paise`;
+  }
+
   autoTable(doc, {
     startY: doc.lastAutoTable.finalY + 2,
     body: [
       [
         { content: "(Total Amount In Words)", styles: { fontStyle: "bold", halign: "left", valign: "middle", font: "helvetica" } },
-        { content: `${amountWords} only`,      styles: { halign: "left",  valign: "middle", font: "helvetica" } }
+        { content: `Rupees ${amountWords} only`,      styles: { halign: "left", valign: "middle", font: "helvetica" } }
       ]
     ],
     theme: "grid",
     styles: {
-      fontSize: 10,
+      fontSize: 10,  // Standard for A4
       font: "helvetica",
       textColor: BLACK,
-      lineColor: BLACK,
-      lineWidth: 0.3,
-      cellPadding: 2,
+      lineColor: GRAY,
+      lineWidth: 0.3,  // Standard for A4
+      cellPadding: 3,   // Standard padding for A4
     },
-    columnStyles: { 0: { cellWidth: 95 }, 1: { cellWidth: 95 } }
+    columnStyles: {
+      0: { cellWidth: COL_W, halign: "left" },
+      1: { cellWidth: COL_W, halign: "left" }
+    }
   });
 
-  // ---- Bank details ----
-  doc.setFontSize(12);
+  // ---------- Bank details ----------
+  doc.setFontSize(14);  // Standard for A4
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...BRAND);
-  doc.text("Bank Details", 15, doc.lastAutoTable.finalY + 10);
+  doc.text("Bank Details", MARGIN_L, doc.lastAutoTable.finalY + 10);
 
   autoTable(doc, {
     startY: doc.lastAutoTable.finalY + 12,
@@ -323,50 +386,61 @@ export async function generateProformaInvoicePDF(invoice, client) {
       ["Account Type",     "Current Account"],
       ["IFSC Code",        "YESB0000006"],
       ["Bank Branch",      "Somajiguda"],
-      ["City",             "Hyderabad"],
+      ["City",             "Hyderabad"]
     ],
     theme: "grid",
     styles: {
-      fontSize: 10,
+      fontSize: 10,  // Standard for A4
       font: "helvetica",
       textColor: BLACK,
-      lineColor: BLACK,
-      lineWidth: 0.3,
+      lineColor: GRAY,
+      lineWidth: 0.3,  // Standard for A4
       halign: "center",
       valign: "middle",
-      cellPadding: 2,
+      cellPadding: 2,  // Standard padding for A4
     },
-    columnStyles: { 0: { fontStyle: "bold", cellWidth: 95 }, 1: { cellWidth: 95 } }
+    columnStyles: {
+      0: { fontStyle: "bold", cellWidth: COL_W, halign: "left" },
+      1: { cellWidth: COL_W, halign: "left" }
+    }
   });
 
-  // ---- Note + signature + footer ----
-  const sigY = doc.lastAutoTable.finalY + 12;
-  const sigX = 35;
-  const sigW = 28;
-  const sigH = 14;
+  // ---------- Note + signature + footer ----------
+  const sigBlockY = doc.lastAutoTable.finalY + 12;
+  const sigBlockX = MARGIN_L + 20;  // Position signature relative to left margin
+  const sigImgWidth = 28;
+  const sigImgHeight = 14;
 
-  if (sign) doc.addImage(sign, "PNG", sigX, sigY, sigW, sigH);
+  if (signatureBase64) {
+    doc.addImage(signatureBase64, "PNG", sigBlockX, sigBlockY, sigImgWidth, sigImgHeight);
+  }
 
   const pageHeight = doc.internal.pageSize.height;
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
+  doc.setFontSize(13);  // Standard for A4
   doc.setTextColor(...BLACK);
-  doc.text("NOTE:", 14, pageHeight - 10);
+  doc.text("NOTE:", MARGIN_L, pageHeight - 10);
 
   doc.setFont("helvetica", "normal");
-  doc.text("No files will be delivered until the final payment is made.", 30, pageHeight - 10);
+  doc.setFontSize(12);  // Standard for A4
+  doc.text("No files will be delivered until the final payment is made.", MARGIN_L + 16, pageHeight - 10);
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.text("Authorised signature for Walls & Trends", sigX + sigW / 2, sigY + sigH + 8, { align: "center" });
+  doc.setFontSize(12);  // Standard for A4
+  doc.text(
+    "Authorised signature for Walls & Trends",
+    sigBlockX + sigImgWidth / 2,
+    sigBlockY + sigImgHeight + 8,
+    { align: "center" }
+  );
 
   const pageWidth = doc.internal.pageSize.getWidth();
-  const rightX = pageWidth - 15;
+  const rightX = pageWidth - MARGIN_L;  // Use same margin as left side
   doc.setFont("helvetica", "italic");
-  doc.setFontSize(9);
+  doc.setFontSize(11);  // Standard for A4
   doc.setTextColor(...BLUE);
-  doc.text("Authenticity Promised. Creativity Published.", rightX, sigY + sigH + 20, { align: "right" });
-  doc.text("Thank you for your business!",                  rightX, sigY + sigH + 26, { align: "right" });
+  doc.text("Authenticity Promised. Creativity Published.", rightX, sigBlockY + sigImgHeight + 20, { align: "right" });
+  doc.text("Thank you for your business!",                  rightX, sigBlockY + sigImgHeight + 26, { align: "right" });
 
   // Return the document instead of saving it directly
   return doc;

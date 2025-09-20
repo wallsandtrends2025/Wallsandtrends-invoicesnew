@@ -60,12 +60,25 @@ body {
 form input{ width: 96% !important;}
 form textarea{ width: 96% !important;}
 .preview{    max-width:600px;margin: 0 auto;border-radius: 5px;padding: 20px;}
+@media print {
+  .preview {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 20px !important;
+    border-radius: 0 !important;
+  }
+}
 .preview h1{font-family: 'Optima';}
 .downloadbtn{    width: 220px;
     margin: 0px auto 30px;
     display: block;border:1px solid #ffffff;height: 50px;line-height: 50px;right: 0;left: auto;top:134px;cursor: pointer;}
     .downloadbtn2{top: 190px;}
     .downloadbtn3{left: 0; right: auto;top:25%;}
+@media print {
+  .downloadbtn {
+    display: none !important;
+  }
+}
 .preview img{width: 75px;}
 .address p{font-size: 10px;margin: 4px 0;}
 .invoicetotal{margin: 10px 0;}
@@ -127,6 +140,7 @@ nav .relative a{background: #ffffff;}
 .back-btn{position: absolute;left: 0;top: -45px;}
 .home-block{padding:0 0 20px;}
 .bottons-block{right: 0;}
+.edit-invoice-payment{padding: 40px 0 0;}
 @media (max-width:1200px){
   nav .relative{padding: 0 5px;}
   nav .relative button{font-size: 11px;}

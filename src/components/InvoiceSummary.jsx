@@ -29,14 +29,23 @@ export default function InvoiceSummary() {
 
   // ---------- pagination ----------
   const [page, setPage] = useState(1);
+  // can be a number or 'all'
   const [pageSize, setPageSize] = useState(25);
+
   const totalRows = summaryData.length;
-  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
-  const startIdx = (page - 1) * pageSize;
-  const endIdx = Math.min(startIdx + pageSize, totalRows);
-  const pagedData = summaryData.slice(startIdx, endIdx);
+  const isShowAll = pageSize === "all";
+  const effectivePageSize = isShowAll ? (totalRows || 1) : pageSize;
+  const totalPages = isShowAll ? 1 : Math.max(1, Math.ceil(totalRows / effectivePageSize));
+  const startIdx = isShowAll ? 0 : (page - 1) * effectivePageSize;
+  const endIdx = isShowAll ? totalRows : Math.min(startIdx + effectivePageSize, totalRows);
+  const pagedData = isShowAll ? summaryData : summaryData.slice(startIdx, endIdx);
 
   const goToPage = (p) => setPage(Math.min(Math.max(1, p), totalPages));
+
+  // keep page in range if data/pageSize changes
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   // ---------- helpers ----------
   const normalizeGroup = (val = "") => {
@@ -86,7 +95,6 @@ export default function InvoiceSummary() {
     });
   };
 
-  // pick latest item by "at" from history list, else fallback fields
   const latestHistoryAt = (inv, listField, fallbacks = []) => {
     const list = Array.isArray(inv?.[listField]) ? inv[listField] : [];
     const latestFromList = list.reduce((best, cur) => {
@@ -142,7 +150,7 @@ export default function InvoiceSummary() {
     setSelectedProject("");
   };
 
-  // ---------- core loader (handles empty date => "all") ----------
+  // ---------- core loader ----------
   const fetchAndFilter = useCallback(async () => {
     setLoading(true);
     try {
@@ -151,8 +159,8 @@ export default function InvoiceSummary() {
 
       const hasFrom = Boolean(fromDate);
       const hasTo = Boolean(toDate);
-      const startDate = hasFrom ? new Date(fromDate) : new Date(0); // -infinity
-      const endDate = hasTo ? new Date(toDate) : new Date(8640000000000000); // +infinity
+      const startDate = hasFrom ? new Date(fromDate) : new Date(0);
+      const endDate = hasTo ? new Date(toDate) : new Date(8640000000000000);
       if (hasTo) endDate.setHours(23, 59, 59, 999);
 
       const filtered = invoices.filter((inv) => {
@@ -201,7 +209,6 @@ export default function InvoiceSummary() {
       const taxSum = filtered.reduce((sum, inv) => sum + getTaxValue(inv), 0);
       const grandSum = filtered.reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0);
 
-      // NEW: paid & pending sums
       const paidSum = filtered.reduce(
         (sum, inv) => sum + Number(inv.amount_paid_total ?? inv.paid_amount ?? 0),
         0
@@ -219,7 +226,6 @@ export default function InvoiceSummary() {
       setTotalPaid(paidSum);
       setTotalPending(pendingSum);
 
-      // reset to page 1 whenever data is regenerated
       setPage(1);
     } catch (e) {
       console.error("Error loading invoices:", e);
@@ -236,7 +242,6 @@ export default function InvoiceSummary() {
     selectedGstPaymentStatus,
   ]);
 
-  // auto-run on mount & whenever filters/dates change
   useEffect(() => {
     fetchAndFilter();
   }, [fetchAndFilter]);
@@ -250,69 +255,85 @@ export default function InvoiceSummary() {
     .filter((p) => (selectedCompanyGroup ? normalizeGroup(p.company) === selectedCompanyGroup : true))
     .filter((p) => (selectedClient ? p.clientId === selectedClient : true));
 
-  // ---------- pagination controls ----------
-  const PaginationControls = () => (
-    <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+  // ---------- pagination UI (round pills like other pages) ----------
+  const getVisiblePages = (current, total) => {
+    const max = 7;
+    if (total <= max) return [...Array(total)].map((_, i) => i + 1);
+    const pages = [];
+    const showLeftDots = current > 4;
+    const showRightDots = current < total - 3;
+    pages.push(1);
+    if (showLeftDots) pages.push("dots-left");
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+    for (let p = start; p <= end; p++) pages.push(p);
+    if (showRightDots) pages.push("dots-right");
+    pages.push(total);
+    return pages;
+  };
+
+  const PagePill = ({ active, disabled, children, onClick }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        "w-9 h-9 rounded-full border flex items-center justify-center text-sm",
+        active
+          ? "bg-blue-500 text-white border-blue-500"
+          : "bg-white text-gray-600 border-gray-300 hover:bg-gray-100",
+        disabled ? "opacity-50 cursor-not-allowed hover:bg-white" : "cursor-pointer",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+
+  const PaginationBar = () => {
+    if (isShowAll || totalPages <= 1) return null;
+    const visible = getVisiblePages(page, totalPages);
+    return (
       <div className="flex items-center gap-2">
-        <label className="text-sm text-gray-600">Rows per page:</label>
+        <PagePill disabled={page === 1} onClick={() => goToPage(page - 1)}>‹</PagePill>
+        {visible.map((p, i) =>
+          typeof p === "number" ? (
+            <PagePill key={`${p}-${i}`} active={p === page} onClick={() => goToPage(p)}>
+              {p}
+            </PagePill>
+          ) : (
+            <span key={`${p}-${i}`} className="px-2 text-gray-400 select-none">…</span>
+          )
+        )}
+        <PagePill disabled={page === totalPages} onClick={() => goToPage(page + 1)}>›</PagePill>
+      </div>
+    );
+  };
+
+  // ---------- TOP-RIGHT controls (STACKED like other pages) ----------
+  const TopRightControls = () => (
+    <div className="flex flex-col items-end gap-2 ml-auto">
+      <div className="flex items-center gap-2">
+        <label className="text-sm text-gray-600">Items per page:</label>
         <select
-          value={pageSize}
-          onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+          value={String(pageSize)}
+          onChange={(e) => {
+            const v = e.target.value === "all" ? "all" : Number(e.target.value);
+            setPageSize(v);
+            setPage(1);
+          }}
           className="border p-1 rounded"
         >
           {[10, 25, 50, 100].map((n) => (
             <option key={n} value={n}>{n}</option>
           ))}
+          <option value="all">Show All</option>
         </select>
-        <span className="text-sm text-gray-600">
-          Showing <strong>{totalRows ? startIdx + 1 : 0}</strong>–<strong>{endIdx}</strong> of <strong>{totalRows}</strong>
-        </span>
       </div>
 
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => goToPage(1)}
-          disabled={page === 1}
-          className="px-2 py-1 border rounded disabled:opacity-50"
-        >
-          « First
-        </button>
-        <button
-          onClick={() => goToPage(page - 1)}
-          disabled={page === 1}
-          className="px-2 py-1 border rounded disabled:opacity-50"
-        >
-          ‹ Prev
-        </button>
-
-        <div className="flex items-center gap-1">
-          <span className="text-sm">Page</span>
-          <input
-            type="number"
-            min={1}
-            max={totalPages}
-            value={page}
-            onChange={(e) => goToPage(Number(e.target.value))}
-            className="w-16 border p-1 rounded text-center"
-          />
-          <span className="text-sm">of {totalPages}</span>
-        </div>
-
-        <button
-          onClick={() => goToPage(page + 1)}
-          disabled={page === totalPages}
-          className="px-2 py-1 border rounded disabled:opacity-50"
-        >
-          Next ›
-        </button>
-        <button
-          onClick={() => goToPage(totalPages)}
-          disabled={page === totalPages}
-          className="px-2 py-1 border rounded disabled:opacity-50"
-        >
-          Last »
-        </button>
-      </div>
+      <span className="text-sm text-gray-600">
+        Showing <strong>{totalRows ? (isShowAll ? 1 : startIdx + 1) : 0}</strong>–
+        <strong>{isShowAll ? totalRows : endIdx}</strong> of <strong>{totalRows}</strong>
+      </span>
     </div>
   );
 
@@ -320,6 +341,7 @@ export default function InvoiceSummary() {
     <div className="bg-white p-6 rounded shadow-md invoice-summary">
       <h2 className="text-2xl font-bold mb-6">Invoice Report</h2>
 
+      {/* Filters */}
       <div className="flex flex-wrap gap-4 mb-4">
         <div className="invoice-summary-cnt">
           <label>From:</label>
@@ -445,8 +467,10 @@ export default function InvoiceSummary() {
         </div>
       </div>
 
-      {/* Top pagination controls */}
-      <PaginationControls />
+      {/* TOP RIGHT controls (stacked) */}
+      <div className="flex justify-end mb-3">
+        <TopRightControls />
+      </div>
 
       {loading ? (
         <p>Loading...</p>
@@ -456,7 +480,7 @@ export default function InvoiceSummary() {
             <p className="text-gray-600 mt-4">No invoices found for the selected filters.</p>
           ) : (
             <div className="relative overflow-x-auto max-h-[600px] overflow-y-auto mt-2">
-              <table className="border-collapse border mt-0 w-full min-w-[2000px]">
+              <table className="border-collapse border mt-0 w/full min-w-[2000px]">
                 <thead className="bg-blue-600 text-white sticky top-0 z-10">
                   <tr>
                     <th className="border p-2">Invoice ID</th>
@@ -464,7 +488,6 @@ export default function InvoiceSummary() {
                     <th className="border p-2">Client</th>
                     <th className="border p-2">Project</th>
                     <th className="border p-2">Date</th>
-                    {/* NEW */}
                     <th className="border p-2">Last Updated</th>
                     <th className="border p-2">Invoice Value</th>
                     <th className="border p-2">Tax Value</th>
@@ -521,7 +544,6 @@ export default function InvoiceSummary() {
                         <td className="border p-2">{clientName}</td>
                         <td className="border p-2">{projectName}</td>
                         <td className="border p-2">{formattedDate}</td>
-                        {/* NEW */}
                         <td className="border p-2">{lastUpdated}</td>
 
                         <td className="border p-2">
@@ -553,7 +575,6 @@ export default function InvoiceSummary() {
                 {/* Sticky totals footer */}
                 <tfoot className="sticky bottom-0 z-10">
                   <tr className="font-bold bg-gray-100">
-                    {/* colSpan increased from 5 -> 6 to account for new "Last Updated" column */}
                     <td colSpan="6" className="border p-2 text-right">Totals</td>
                     <td className="border p-2">
                       ₹ {Number(totalSubtotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
@@ -580,8 +601,10 @@ export default function InvoiceSummary() {
             </div>
           )}
 
-          {/* Bottom pagination controls */}
-          {summaryData.length > 0 && <PaginationControls />}
+          {/* Bottom-right round pager (hidden on "Show All") */}
+          <div className="flex justify-end mt-4">
+            <PaginationBar />
+          </div>
         </>
       )}
     </div>

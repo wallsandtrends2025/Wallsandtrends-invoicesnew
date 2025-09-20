@@ -4,7 +4,7 @@ import autoTable from "jspdf-autotable";
 export async function generateQuotationPDF(quotation, client) {
   const doc = new jsPDF();
 
-  doc.setFont("Arial", "normal");
+  doc.setFont("calibri", "normal");
 
   const isWT = quotation.quotation_type === "WT" || quotation.quotation_type === "WTPL";
   const logoPath = `${window.location.origin}${isWT ? "/wt-logo.png" : "/wtx_logo.webp"}`;
@@ -40,14 +40,14 @@ export async function generateQuotationPDF(quotation, client) {
 
   doc.setFontSize(16);
   doc.setTextColor(59, 89, 152);
-  doc.setFont("Arial", "normal");
+  doc.setFont("calibri","normal")
   doc.text("Quotation", 15, 52);
 
   function printInlineLabelValue(label, value, x, y) {
-    doc.setFont("Arial", "bold");
+    doc.setFont("calibri", "bold");
     doc.text(label, x, y);
     const labelWidth = doc.getTextWidth(label);
-    doc.setFont("Arial", "normal");
+    doc.setFont("calibri", "normal");
     doc.text(value, x + labelWidth + 1, y);
   }
 
@@ -72,7 +72,7 @@ export async function generateQuotationPDF(quotation, client) {
   printInlineLabelValue("Quotation Title:", quotation.quotation_title || "N/A", 17, currentY + 5);
 
   const metaEndY = currentY + rowHeight;
-  doc.setFont("Arial", "normal");
+  doc.setFont("calibri", "normal");
   doc.text(
     `This quotation prepared by Walls & Trends (${quotation.quotation_type}) includes the selected service for ${client.client_name}.`,
     15,
@@ -120,7 +120,7 @@ export async function generateQuotationPDF(quotation, client) {
     },
     styles: {
       fontSize: 10,
-      font: "Arial",
+      font: "calibri",
       textColor: [0, 0, 0],
       halign: "center",
       lineColor: [0, 0, 0],
@@ -146,7 +146,7 @@ export async function generateQuotationPDF(quotation, client) {
     theme: "grid",
     styles: {
       fontSize: 10,
-      font: "Arial",
+      font: "calibri",
       textColor: [0, 0, 0],
       lineColor: [0, 0, 0],
       lineWidth: 0.3
@@ -172,7 +172,7 @@ export async function generateQuotationPDF(quotation, client) {
   doc.setLineWidth(0.2);
   doc.line(sigBlockX, sigLineY, sigBlockX + sigImgWidth, sigLineY);
 
-  doc.setFont("Arial", "normal");
+  doc.setFont("calibri","normal") 
   doc.setFontSize(10);
   doc.setTextColor(0);
   doc.text("Authorised signature for Walls & Trends", sigBlockX + sigImgWidth / 2, sigLineY + 6, { align: "center" });

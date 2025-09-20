@@ -93,20 +93,17 @@ export default function ClientSignup() {
   const validatePhone = (raw, country) => {
     if (!raw) return "Just enter valid number";
     if (isIndia(country)) {
-      if (!indiaMobileRegex.test(raw)) {
-        return "Just enter valid number";
-      }
+      if (!indiaMobileRegex.test(raw)) return "Just enter valid number";
     } else {
-      if (!intlRegex.test(raw)) {
-        return "Just enter valid number";
-      }
+      if (!intlRegex.test(raw)) return "Just enter valid number";
     }
     return "";
   };
 
   const validateEmail = (raw) => {
     if (!raw) return "Email is required.";
-    if (!emailRegex.test(raw)) return "Enter a valid email address (e.g., name@example.com).";
+    if (!emailRegex.test(raw))
+      return "Enter a valid email address (e.g., name@example.com).";
     return "";
   };
 
@@ -114,7 +111,8 @@ export default function ClientSignup() {
     const v = (raw || "").toUpperCase().trim();
     if (!v) return "PAN number is required.";
     if (v.length < 10) return "";
-    if (v.length === 10 && !panRegex.test(v)) return "Invalid PAN format (e.g., ABCDE1234F).";
+    if (v.length === 10 && !panRegex.test(v))
+      return "Invalid PAN format (e.g., ABCDE1234F).";
     if (v.length > 10) return "PAN must be exactly 10 characters.";
     return "";
   };
@@ -123,8 +121,34 @@ export default function ClientSignup() {
     const v = (raw || "").toUpperCase().trim();
     if (!v) return "GST number is required.";
     if (v.length < 15) return "";
-    if (v.length === 15 && !gstRegex.test(v)) return "Invalid GST format (e.g., 22ABCDE1234F1Z5).";
+    if (v.length === 15 && !gstRegex.test(v))
+      return "Invalid GST format (e.g., 22ABCDE1234F1Z5).";
     if (v.length > 15) return "GST must be exactly 15 characters.";
+    return "";
+  };
+
+  // --- PAN inside GST helper ---
+  // For GSTIN: positions 3-12 (0-indexed slice 2..12) must be the PAN.
+  const extractPanFromGst = (gst) =>
+    (gst || "").toUpperCase().trim().slice(2, 12);
+
+  // Recompute cross-field PAN-in-GST error
+  const computePanGstError = (pan, gst) => {
+    const p = (pan || "").toUpperCase().trim();
+    const g = (gst || "").toUpperCase().trim();
+    if (!p && !g) return "";
+    // If one is present and the other isn't, keep the existing linked message
+    if ((!!p && !g) || (!p && !!g))
+      return "PAN number and GST number must both be filled (they are linked).";
+    // If both present but lengths not final yet, don't show mismatch error prematurely
+    if (p.length !== 10 || g.length !== 15) return "";
+    // If both formatted ok, check match
+    if (panRegex.test(p) && gstRegex.test(g)) {
+      const panInGst = extractPanFromGst(g);
+      if (panInGst !== p)
+        return "PAN number and GST number do not match. Please ensure your GSTIN contains the same PAN";
+      return "";
+    }
     return "";
   };
 
@@ -142,7 +166,11 @@ export default function ClientSignup() {
 
     if (name === "company_group") {
       setClient((prev) => ({ ...prev, company_group: value, poc: "" }));
-      setErrors((prev) => ({ ...prev, company_group: value ? "" : "Company is required.", poc: "" }));
+      setErrors((prev) => ({
+        ...prev,
+        company_group: value ? "" : "Company is required.",
+        poc: "",
+      }));
       return;
     }
 
@@ -174,7 +202,10 @@ export default function ClientSignup() {
         cleaned = cleaned.slice(0, 16);
       }
       setClient((prev) => ({ ...prev, phone: cleaned }));
-      setErrors((prev) => ({ ...prev, phone: validatePhone(cleaned, client.country) }));
+      setErrors((prev) => ({
+        ...prev,
+        phone: validatePhone(cleaned, client.country),
+      }));
       return;
     }
 
@@ -187,15 +218,29 @@ export default function ClientSignup() {
 
     if (name === "pan_number") {
       const v = value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
+      const nextPanErr = validatePAN(v);
+      // Cross-check with current GST
+      const nextPanGstErr = computePanGstError(v, client.gst_number);
       setClient((prev) => ({ ...prev, pan_number: v }));
-      setErrors((prev) => ({ ...prev, pan: validatePAN(v), pan_gst: "" }));
+      setErrors((prev) => ({
+        ...prev,
+        pan: nextPanErr,
+        pan_gst: nextPanGstErr,
+      }));
       return;
     }
 
     if (name === "gst_number") {
       const v = value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 15);
+      const nextGstErr = validateGST(v);
+      // Cross-check with current PAN
+      const nextPanGstErr = computePanGstError(client.pan_number, v);
       setClient((prev) => ({ ...prev, gst_number: v }));
-      setErrors((prev) => ({ ...prev, gst: validateGST(v), pan_gst: "" }));
+      setErrors((prev) => ({
+        ...prev,
+        gst: nextGstErr,
+        pan_gst: nextPanGstErr,
+      }));
       return;
     }
 
@@ -226,12 +271,8 @@ export default function ClientSignup() {
       gstErr = validateGST(client.gst_number);
     }
 
-    let panGstErr = "";
-    const hasPAN = !!client.pan_number?.trim();
-    const hasGST = !!client.gst_number?.trim();
-    if ((hasPAN && !hasGST) || (!hasPAN && hasGST)) {
-      panGstErr = "PAN number and GST number must both be filled (they are linked).";
-    }
+    // Cross-field: PAN must be included in GST (positions 3–12)
+    let panGstErr = computePanGstError(client.pan_number, client.gst_number);
 
     const requiredFields = [
       "client_name",
@@ -494,6 +535,7 @@ export default function ClientSignup() {
           {helpText(errors.gst)}
         </div>
 
+        {/* Cross-field error */}
         {helpText(errors.pan_gst)}
 
         <button

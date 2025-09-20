@@ -6,7 +6,7 @@ export async function generateInvoicePDF(invoice, client) {
   const doc = new jsPDF();
 
   // ---------- Base fonts & colors ----------
-  doc.setFont("calibri", "normal");
+  doc.setFont("helvetica", "normal");
   const BLUE   = [59, 89, 152];      // WT heading color
   const YELLOW = [255, 222, 88];     // WTX heading color
   const BLACK  = [0, 0, 0];
@@ -85,14 +85,14 @@ export async function generateInvoicePDF(invoice, client) {
     doc.setFontSize(12);  // Increased for mobile readability
     doc.setTextColor(...BLACK);
 
-    doc.setFont("calibri", "bold");
+    doc.setFont("helvetica", "bold");
     const labelText = String(label ?? "");
     const labelWidth = doc.getTextWidth(labelText + " ");
 
     const valueStartX = x + PAD + labelWidth + 1;
     const usableFirstLineWidth = Math.max(12, w - (labelWidth + PAD * 2 + 1));  // Increased minimum width
 
-    doc.setFont("calibri", "normal");
+    doc.setFont("helvetica", "normal");
     const rawValue = String(value ?? "");
     const firstLineArr = doc.splitTextToSize(rawValue, usableFirstLineWidth);
     const firstLine = firstLineArr[0] ?? "";
@@ -140,7 +140,7 @@ export async function generateInvoicePDF(invoice, client) {
   if (logoBase64) doc.addImage(logoBase64, "PNG", MARGIN_L, 10, 30, 18);
 
   // Address
-  doc.setFont("calibri", "normal");
+  doc.setFont("helvetica", "normal");
   doc.setFontSize(12);  // Increased for mobile readability
   doc.setTextColor(...BLACK);
   doc.text("19/B, 3rd Floor, Progressive Tower, 100 Ft Road,", MARGIN_L, 32);
@@ -149,7 +149,7 @@ export async function generateInvoicePDF(invoice, client) {
 
   // Heading
   doc.setFontSize(18);  // Increased for mobile readability
-  doc.setFont("calibri", "Bold");
+  doc.setFont("helvetica", "Bold");
   doc.setTextColor(...BRAND);
   doc.text("Tax Invoice", MARGIN_L, 52);
 
@@ -243,7 +243,7 @@ export async function generateInvoicePDF(invoice, client) {
   }
 
   // Debug logging removed for production
-
+ 
   // Build summary rows (only show applicable rows)
   const taxRows =
     isIndian && isTelangana
@@ -291,11 +291,11 @@ export async function generateInvoicePDF(invoice, client) {
       halign: "center",
       lineColor: GRAY,
       lineWidth: 0.3,
-      font: "calibri",
+      font: "helvetica",
     },
     styles: {
       fontSize: 12,  // Increased for mobile readability
-      font: "calibri",
+      font: "helvetica",
       textColor: BLACK,
       halign: "center",
       valign: "middle",
@@ -329,14 +329,14 @@ export async function generateInvoicePDF(invoice, client) {
     startY: doc.lastAutoTable.finalY + 2,
     body: [
       [
-        { content: "(Total Amount In Words)", styles: { fontStyle: "bold", halign: "left", valign: "middle", font: "calibri" } },
-        { content: `Rupees ${amountWords} only`,      styles: { halign: "left", valign: "middle", font: "calibri" } }
+        { content: "(Total Amount In Words)", styles: { fontStyle: "bold", halign: "left", valign: "middle", font: "helvetica" } },
+        { content: `Rupees ${amountWords} only`,      styles: { halign: "left", valign: "middle", font: "helvetica" } }
       ]
     ],
     theme: "grid",
     styles: {
       fontSize: 12,  // Increased for mobile readability
-      font: "calibri",
+      font: "helvetica",
       textColor: BLACK,
       lineColor: GRAY,
       lineWidth: 0.3,
@@ -368,13 +368,13 @@ export async function generateInvoicePDF(invoice, client) {
     theme: "grid",
     styles: {
       fontSize: 12,  // Increased for mobile readability
-      font: "calibri",
+      font: "helvetica",
       textColor: BLACK,
       lineColor: GRAY,
       lineWidth: 0.3,
       halign: "center",
       valign: "middle",
-      cellPadding: 4,  // Increased for better mobile spacing
+      cellPadding: 2,  // Reduced cell padding
     },
     columnStyles: {
       0: { fontStyle: "bold", cellWidth: COL_W },
@@ -393,16 +393,16 @@ export async function generateInvoicePDF(invoice, client) {
   }
 
   const pageHeight = doc.internal.pageSize.height;
-  doc.setFont("calibri", "bold");
+  doc.setFont("helvetica", "bold");
   doc.setFontSize(13);  // Increased for mobile readability
   doc.setTextColor(...BLACK);
   doc.text("NOTE:", MARGIN_L, pageHeight - 10);
 
-  doc.setFont("calibri", "normal");
+  doc.setFont("helvetica", "normal");
   doc.setFontSize(12);  // Increased for mobile readability
   doc.text("No files will be delivered until the final payment is made.", MARGIN_L + 16, pageHeight - 10);
 
-  doc.setFont("calibri", "normal");
+  doc.setFont("helvetica", "normal");
   doc.setFontSize(12);  // Increased for mobile readability
   doc.text(
     "Authorised signature for Walls & Trends",
@@ -413,7 +413,7 @@ export async function generateInvoicePDF(invoice, client) {
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const rightX = pageWidth - MARGIN_L;  // Use same margin as left side
-  doc.setFont("calibri", "italic");
+  doc.setFont("helvetica", "italic");
   doc.setFontSize(11);  // Increased for mobile readability
   doc.setTextColor(...BLUE);
   doc.text("Authenticity Promised. Creativity Published.", rightX, sigBlockY + sigImgHeight + 20, { align: "right" });
