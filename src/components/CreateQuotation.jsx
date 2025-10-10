@@ -84,6 +84,7 @@ export default function CreateProforma() {
     { label: "Ad Film", value: "Ad Film" },
     { label: "Brand Film", value: "Brand Film" },
     { label: "Corporate Film", value: "Corporate Film" },
+    { label: "Shoot Camera Equipment", value: "Shoot Camera Equipment" },
   ];
 
   // load clients
@@ -454,7 +455,7 @@ export default function CreateProforma() {
                   borderRadius: 8,
                 }}
               >
-                <div style={{ marginBottom: 15 }}>
+                <div className="services-block" style={{ marginBottom: 15 }}>
                   <RequiredLabel>Service Name {idx + 1}</RequiredLabel>
                   <Select
                     isMulti
@@ -700,15 +701,15 @@ export default function CreateProforma() {
                 style={{
                   flex: 1,
                   padding: "16px 24px",
-                  background: "#6b7280",
+                  background: "#3b5997",
                   color: "#fff",
                   borderRadius: "12px",
                   fontWeight: "bold",
                   fontSize: "18px",
-                  border: "2px solid #6b7280",
+                  border: "2px solid #3b5997",
                   cursor: "pointer",
                   height: "44px",
-                  boxShadow: "0 3px 6px rgba(107, 114, 128, 0.2)",
+                  boxShadow: "0 3px 6px #3b5997",
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "center",

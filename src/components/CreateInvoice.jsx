@@ -90,6 +90,7 @@ export default function CreateInvoice() {
     { label: "Ad Film", value: "Ad Film" },
     { label: "Brand Film", value: "Brand Film" },
     { label: "Corporate Film", value: "Corporate Film" },
+    { label: "Shoot Camera Equipment", value: "Shoot Camera Equipment" },
   ];
 
   // fetch clients & projects
@@ -542,7 +543,7 @@ export default function CreateInvoice() {
         {services.map((service, idx) => {
           const rowErr = errors.serviceRows[idx] || {};
           return (
-            <div key={idx} style={{ marginBottom: "25px", padding: "20px", background: "#fafafa", border: "1px solid #ddd", borderRadius: "8px" }}>
+            <div key={idx} className="services-block" style={{ marginBottom: "25px", padding: "20px", background: "#fafafa", border: "1px solid #ddd", borderRadius: "8px" }}>
               <div style={{ marginBottom: "15px" }}>
                 <RequiredLabel>Service Name {idx + 1}</RequiredLabel>
                 <Select

@@ -12,30 +12,46 @@ export default function EditQuotation() {
   const [docData, setDocData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Choices (mirror EditProject tone)
+  // Companies & Payment options
   const companies = ["WT", "WTX", "WTPL", "WTXPL"];
   const paymentOptions = ["Pending", "Partial", "Paid"];
 
-  // Options for chips
+  // 🔹 Same service options set you used in Edit Invoice
   const serviceOptions = useMemo(
     () =>
       [
         "Lyrical Videos",
-        "Teasers",
-        "Trailers",
         "Posters",
-        "Promos",
-        "Marketing",
-        "Web Development",
-        "Editing",
-        "Meme Marketing",
-        "Creative design",
         "Digital Creatives",
+        "Motion Posters",
+        "Title Animations",
+        "Marketing",
+        "Editing",
+        "Teaser",
+        "Trailer",
+        "Promos",
+        "Google Ads",
+        "YouTube Ads",
+        "Influencer Marketing",
+        "Meme Marketing",
+        "Open and end titles",
+        "Pitch Deck",
+        "Branding",
+        "Strategy & Marketing",
+        "Creative design & editing",
+        "Digital Marketing",
+        "Content & video production",
+        "Performance Marketing",
+        "Web Development",
+        "Ad Film",
+        "Brand Film",
+        "Corporate Film",
+        "Shoot Camera Equipment",
       ].map((s) => ({ value: s, label: s })),
     []
   );
 
-  // --- UI helpers (same feel as EditProject) ---
+  // --- UI helpers (same feel as your other pages)
   const inputClass = (hasError) =>
     `w-full border px-4 py-2 rounded-[10px] ${
       hasError
@@ -49,7 +65,34 @@ export default function EditQuotation() {
   const COMPANY_OPTIONS = companies.map((c) => ({ value: c, label: c }));
   const PAYMENT_OPTIONS = paymentOptions.map((p) => ({ value: p, label: p }));
 
-  // --- Normalize: produce chip values from existing data (strings or {name}) ---
+  // 🔧 Normalize services from existing doc:
+  // Accepts: array of strings OR array of {name, description, amount}
+  const normalizeServices = (rawServices) => {
+    if (!Array.isArray(rawServices)) return [];
+    return rawServices.map((row) => {
+      // If row is a string, treat as a single-name service with empty desc/0 amount
+      if (typeof row === "string") {
+        return { name: [row], description: "", amount: 0 };
+      }
+      // If row is object, coerce shape
+      const name =
+        Array.isArray(row?.name)
+          ? row.name.filter(Boolean)
+          : typeof row?.name === "string"
+          ? row.name
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [];
+      return {
+        name,
+        description: String(row?.description ?? ""),
+        amount: Number(row?.amount ?? 0),
+      };
+    });
+  };
+
+  // --- Normalize the full doc to editing shape
   const normalizeForEdit = (raw) => {
     const proforma_id = raw.proforma_id || raw.quotation_id || "";
     const proforma_date = raw.proforma_date || raw.quotation_date || raw.date || "";
@@ -57,15 +100,7 @@ export default function EditQuotation() {
     const company = raw.proforma_type || raw.quotation_type || raw.company || "WT";
     const payment_status = raw.payment_status || "Pending";
 
-    const names = Array.isArray(raw.services)
-      ? raw.services
-          .map((s) =>
-            typeof s === "string" ? s : Array.isArray(s.name) ? s.name[0] : s.name
-          )
-          .filter(Boolean)
-      : [];
-
-    const servicesSelected = names.map((n) => ({ value: n, label: n }));
+    const services = normalizeServices(raw.services);
 
     return {
       ...raw,
@@ -74,11 +109,11 @@ export default function EditQuotation() {
       proforma_title,
       company,
       payment_status,
-      servicesSelected, // react-select value ONLY
+      services, // [{name:[], description:"", amount:0}]
     };
   };
 
-  // --- Fetch ---
+  // --- Fetch
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -99,10 +134,61 @@ export default function EditQuotation() {
     fetchData();
   }, [id, navigate]);
 
-  // --- Submit ---
+  // --- Service row helpers (same behavior as Edit Invoice)
+  const updateService = (idx, patch) => {
+    setDocData((prev) => {
+      const next = [...(prev.services || [])];
+      next[idx] = { ...next[idx], ...patch };
+      return { ...prev, services: next };
+    });
+  };
+
+  const addService = () =>
+    setDocData((prev) => ({
+      ...prev,
+      services: [...(prev.services || []), { name: [], description: "", amount: 0 }],
+    }));
+
+  const removeService = (idx) =>
+    setDocData((prev) => {
+      const next = [...(prev.services || [])];
+      next.splice(idx, 1);
+      return { ...prev, services: next };
+    });
+
+  // --- Totals (Quotation needs at least a subtotal/total preview)
+  const sanitizedServices = useMemo(
+    () =>
+      (docData?.services || []).map((s) => ({
+        name: (Array.isArray(s.name) ? s.name : []).filter(Boolean).join(", "),
+        description: String(s.description || ""),
+        amount: Number(s.amount || 0),
+      })),
+    [docData?.services]
+  );
+
+  const subtotal = useMemo(
+    () => sanitizedServices.reduce((sum, s) => sum + Number(s.amount || 0), 0),
+    [sanitizedServices]
+  );
+
+  // Extend later if you want GST preview here as well
+  const total_amount = subtotal;
+
+  // --- Submit
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      // Persist services in structured form + a flat array of names for legacy UI/filters
+      const servicesStructured = (docData.services || []).map((row) => ({
+        name: Array.isArray(row?.name) ? row.name.filter(Boolean) : [],
+        description: String(row?.description || ""),
+        amount: Number(row?.amount || 0),
+      }));
+      const servicesFlat = servicesStructured
+        .flatMap((r) => r.name)
+        .filter(Boolean);
+
       const payload = {
         // ids/titles/dates
         proforma_id: docData.proforma_id || "",
@@ -120,8 +206,13 @@ export default function EditQuotation() {
         company: docData.company || "WT",
         payment_status: docData.payment_status || "Pending",
 
-        // services: array of strings (chips)
-        services: (docData.servicesSelected || []).map((o) => o.value),
+        // services
+        services: servicesStructured,     // preferred (structured)
+        services_flat: servicesFlat,      // optional (compat / search)
+
+        // helpful preview totals (optional)
+        subtotal: Number(subtotal.toFixed(2)),
+        total_amount: Number(total_amount.toFixed(2)),
       };
 
       await updateDoc(doc(db, "quotations", id), payload);
@@ -197,7 +288,7 @@ export default function EditQuotation() {
                 onChange={(opt) => setDocData({ ...docData, company: opt?.value || "WT" })}
                 styles={selectStylesLight}
                 classNamePrefix="rs"
-                menuPortalTarget={document.body}
+                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                 menuPosition="fixed"
               />
             </div>
@@ -213,37 +304,132 @@ export default function EditQuotation() {
                 }
                 styles={selectStylesLight}
                 classNamePrefix="rs"
-                menuPortalTarget={document.body}
+                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                 menuPosition="fixed"
               />
             </div>
+          </div>
 
-            {/* Services (chip multi-select) */}
-            <div className="pl-[15px] pr-[15px] col-span-2 space-y-2">
-              <label className={labelClass(false)}>Services</label>
-              <Select
-                isMulti
-                closeMenuOnSelect={false}
-                options={serviceOptions}
-                value={docData.servicesSelected || []}
-                onChange={(arr) => setDocData({ ...docData, servicesSelected: arr || [] })}
-                placeholder="Select services"
-                styles={selectStylesLight}
-                classNamePrefix="rs"
-                menuPortalTarget={document.body}
-                menuPosition="fixed"
-              />
-            </div>
+          {/* ===== Services (like Edit Invoice) ===== */}
+          <div className="my-8 border-t border-gray-200" />
+          <div className="mb-2 flow-root">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Services</h3>
 
-            {/* Submit */}
-            <div className=" flex justify-center pl=[15px] pr-[15px] pt-[10px] pb-[10px] col-span-2">
-              <button
-                type="submit"
-                className="bg-[#3b5997] text-[#ffffff] font-semibold  rounded-[10px] w-[30%] h-[40px] border-0"
+            {(docData.services || []).map((row, idx) => (
+              <div
+                key={idx}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                  padding: 16,
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 8,
+                  background: "#f9fafb",
+                  marginBottom: 24,
+                  position: "relative",
+                  overflow: "visible",
+                  clear: "both",
+                }}
               >
-                Update Proforma
-              </button>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Service Name {idx + 1}
+                  </label>
+                  <Select
+                    isMulti
+                    options={serviceOptions}
+                    styles={rsStyles}
+                    menuPosition="fixed"
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                    value={(row.name || []).map((n) => ({ label: n, value: n }))}
+                    onChange={(opts) =>
+                      updateService(idx, { name: (opts || []).map((o) => o.value) })
+                    }
+                    placeholder="Select Service(s)"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Service Description
+                  </label>
+                  <textarea
+                    value={row.description || ""}
+                    onChange={(e) => updateService(idx, { description: e.target.value })}
+                    className="w-full border border-gray-300 px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-black"
+                    rows={3}
+                    placeholder="Enter Service Description"
+                    style={{ display: "block" }}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Service Amount ₹
+                  </label>
+                  <input
+                    type="number"
+                    value={row.amount ?? 0}
+                    onChange={(e) =>
+                      updateService(idx, { amount: Number(e.target.value || 0) })
+                    }
+                    className="w-full border border-gray-300 px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-black"
+                    style={{ display: "block" }}
+                  />
+                </div>
+
+                {(docData.services || []).length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeService(idx)}
+                    className="inline-flex items-center justify-center h-[40px] px-6 rounded-full font-semibold text-[#ffffff] bg-[#3b5998] hover:bg-[#2f497e] shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    Remove Service
+                  </button>
+                )}
+              </div>
+            ))}
+
+            <button
+              type="button"
+              onClick={addService}
+              className="inline-flex items-center justify-center h-[40px] px-6 rounded-full font-semibold text-[#ffffff] bg-[#3b5998] hover:bg-[#2f497e] shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {docData.services?.length ? "Add Another Service" : "Add Service"}
+            </button>
+          </div>
+
+          {/* ===== Totals Preview ===== */}
+          <div className="my-8 border-t border-gray-200" />
+          <div className="mb-10 flow-root">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">Totals</h3>
+            <div className="flow-root bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <p className="mb-1">
+                <b>Subtotal:</b> ₹{" "}
+                {new Intl.NumberFormat("en-IN", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                }).format(subtotal)}
+              </p>
+              <p className="mb-0">
+                <b>Total Amount:</b> ₹{" "}
+                {new Intl.NumberFormat("en-IN", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                }).format(total_amount)}
+              </p>
             </div>
+          </div>
+
+          {/* Submit */}
+          <div className="flex justify-center pt-[10px] pb-[10px]">
+            <button
+              type="submit"
+              className="bg-[#3b5997] text-[#ffffff] font-semibold rounded-[10px] w-[30%] h-[40px] border-0"
+            >
+              Update Proforma
+            </button>
           </div>
         </form>
       </div>
@@ -251,7 +437,7 @@ export default function EditQuotation() {
   );
 }
 
-// ✅ Same clean light react-select styles as EditProject
+// ✅ Same clean light react-select styles as your other forms
 const selectStylesLight = {
   control: (base, state) => ({
     ...base,
@@ -282,4 +468,19 @@ const selectStylesLight = {
   }),
   indicatorsContainer: (b) => ({ ...b, paddingRight: 8 }),
   indicatorsSeparator: () => ({ display: "none" }),
+};
+
+// 🔵 React-select styles for the Services rows (matches Edit Invoice feel)
+const rsStyles = {
+  control: (base, state) => ({
+    ...base,
+    minHeight: 44,
+    borderColor: state.isFocused ? "#000000" : "#d1d5db",
+    boxShadow: state.isFocused ? "0 0 0 1px #000000" : "none",
+    "&:hover": { borderColor: state.isFocused ? "#000000" : "#9ca3af" },
+  }),
+  valueContainer: (b) => ({ ...b, padding: "2px 10px" }),
+  multiValue: (b) => ({ ...b, borderRadius: 6 }),
+  placeholder: (b) => ({ ...b, color: "#6b7280" }),
+  menuPortal: (base) => ({ ...base, zIndex: 9999 }),
 };

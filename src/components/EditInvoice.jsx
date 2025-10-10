@@ -53,13 +53,13 @@ export default function EditInvoice() {
   const [saving, setSaving] = useState(false);
   const [amountPayingNow, setAmountPayingNow] = useState(0);
 
-  // 🔹 Unified blue rounded button (matches your screenshot)
-  const btn =
-      "inline-flex items-center justify-center h-[40px] px-6 rounded-full font-semibold text-[#ffffff] " +
-  "bg-[#3b5998] hover:bg-[#2f497e] shadow-sm transition-colors " +
-  "disabled:opacity-60 disabled:cursor-not-allowed";
+  // 🔹 Same button style used in Edit Proforma
+  const primaryBtn =
+    "bg-[#3b5997] text-[#ffffff] font-semibold rounded-[10px] h-[40px] border-0 px-6 inline-flex items-center justify-center disabled:opacity-60";
+  const outlineBtn =
+    "bg-white text-[#111827] font-semibold rounded-[10px] h-[40px] border border-gray-300 px-6 inline-flex items-center justify-center hover:bg-gray-50";
 
-  // Service options
+  // Service options (same set you’re using)
   const serviceOptions = [
     { label: "Lyrical Videos", value: "Lyrical Videos" },
     { label: "Posters", value: "Posters" },
@@ -87,9 +87,52 @@ export default function EditInvoice() {
     { label: "Ad Film", value: "Ad Film" },
     { label: "Brand Film", value: "Brand Film" },
     { label: "Corporate Film", value: "Corporate Film" },
+    { label: "Shoot Camera Equipment", value: "Shoot Camera Equipment" },
   ];
 
-  // react-select styles
+  // ——— UI helpers (match Edit Proforma) ———
+  const inputClass = (hasError) =>
+    `w-full border px-4 py-2 rounded-[10px] ${
+      hasError
+        ? "!border-red-500 !text-red-700 placeholder-red-400 focus:outline-none focus:ring-1 focus:!ring-red-500"
+        : "border-gray-300 text-black focus:outline-none focus:ring-2 focus:ring-gray-200"
+    }`;
+  const labelClass = (hasError) =>
+    `block mb-2 font-semibold ${hasError ? "text-red-700" : "text-black"}`;
+
+  // react-select (light) + services row styles
+  const selectStylesLight = {
+    control: (base, state) => ({
+      ...base,
+      backgroundColor: "#fff",
+      borderColor: state.isFocused ? "#c7d2fe" : "#d1d5db",
+      boxShadow: state.isFocused ? "0 0 0 2px rgba(199,210,254,0.6)" : "none",
+      minHeight: 48,
+      borderRadius: 10,
+      ":hover": { borderColor: "#d1d5db" },
+      fontSize: 14,
+    }),
+    valueContainer: (b) => ({ ...b, padding: "6px 12px" }),
+    input: (b) => ({ ...b, color: "#111827" }),
+    placeholder: (b) => ({ ...b, color: "#9ca3af" }),
+    singleValue: (b) => ({ ...b, color: "#111827" }),
+    menu: (b) => ({ ...b, backgroundColor: "#fff", borderRadius: 10, overflow: "hidden" }),
+    option: (b, s) => ({
+      ...b,
+      backgroundColor: s.isFocused ? "#f3f4f6" : "#fff",
+      color: "#111827",
+      cursor: "pointer",
+    }),
+    multiValue: (b) => ({ ...b, backgroundColor: "#eef2ff", borderRadius: 6 }),
+    multiValueLabel: (b) => ({ ...b, color: "#3730a3", fontWeight: 600 }),
+    multiValueRemove: (b) => ({
+      ...b,
+      ":hover": { backgroundColor: "#c7d2fe", color: "#111827", cursor: "pointer" },
+    }),
+    indicatorsContainer: (b) => ({ ...b, paddingRight: 8 }),
+    indicatorsSeparator: () => ({ display: "none" }),
+  };
+
   const rsStyles = {
     control: (base, state) => ({
       ...base,
@@ -97,8 +140,9 @@ export default function EditInvoice() {
       borderColor: state.isFocused ? "#000000" : "#d1d5db",
       boxShadow: state.isFocused ? "0 0 0 1px #000000" : "none",
       "&:hover": { borderColor: state.isFocused ? "#000000" : "#9ca3af" },
+      borderRadius: 10,
     }),
-    valueContainer: (b) => ({ ...b, padding: "2px 10px" }),
+    valueContainer: (b) => ({ ...b, padding: "6px 12px" }),
     multiValue: (b) => ({ ...b, borderRadius: 6 }),
     placeholder: (b) => ({ ...b, color: "#6b7280" }),
     menuPortal: (base) => ({ ...base, zIndex: 9999 }),
@@ -147,7 +191,10 @@ export default function EditInvoice() {
           Array.isArray(row?.name)
             ? row.name
             : typeof row?.name === "string"
-            ? row.name.split(",").map((s) => s.trim()).filter(Boolean)
+            ? row.name
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
             : [];
         return {
           name,
@@ -302,134 +349,136 @@ export default function EditInvoice() {
   };
 
   return (
-    <div className="p-6 min-h-screen bg-gray-50 flex justify-center items-start">
-      <div className="w-full max-w-3xl bg-white p-8 rounded-2xl shadow-md border-gray-100">
-        <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Edit Invoice</h2>
+    <div className="bg-[#F4F6FF] p-[10px]">
+      <div className="max-w-6xl mx-auto">
+        {/* Title chip (matches Edit Proforma) */}
+        <div className="bg-[#ffffff] shadow-sm mb-4 p-[15px] rounded-xl">
+          <h2 className="font-semibold text-[#000000] m-[0]">Edit Invoice</h2>
+        </div>
 
-        <form onSubmit={handleSubmit}>
+        {/* Main form card */}
+        <form
+          onSubmit={handleSubmit}
+          className="bg-[#ffffff] shadow-md rounded-xl p-[15px] md:p-8 max-w-6xl mx-auto"
+          noValidate
+        >
           {/* ===== Invoice Details ===== */}
-          <div className="mb-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Invoice Details</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className={labelClass(false)}>Invoice ID</label>
+              <input
+                type="text"
+                name="invoice_id"
+                value={invoice.invoice_id}
+                onChange={handleField}
+                className={inputClass(false)}
+                required
+              />
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Invoice ID</label>
-                <input
-                  type="text"
-                  name="invoice_id"
-                  value={invoice.invoice_id}
-                  onChange={handleField}
-                  className="w-full border border-gray-300 px-4 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-black"
-                  required
-                />
-              </div>
+            <div className="space-y-2">
+              <label className={labelClass(false)}>Client ID</label>
+              <input
+                type="text"
+                name="client_id"
+                value={invoice.client_id}
+                onChange={handleField}
+                className={inputClass(false)}
+                required
+              />
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Client ID</label>
-                <input
-                  type="text"
-                  name="client_id"
-                  value={invoice.client_id}
-                  onChange={handleField}
-                  className="w-full border border-gray-300 px-4 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-black"
-                  required
-                />
-              </div>
+            <div className="md:col-span-2 space-y-2">
+              <label className={labelClass(false)}>Invoice Title</label>
+              <input
+                type="text"
+                name="invoice_title"
+                value={invoice.invoice_title}
+                onChange={handleField}
+                className={inputClass(false)}
+                required
+                placeholder="e.g., Creative Services Invoice"
+              />
+            </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Title</label>
-                <input
-                  type="text"
-                  name="invoice_title"
-                  value={invoice.invoice_title}
-                  onChange={handleField}
-                  className="w-full border border-gray-300 px-4 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-black"
-                  required
-                />
-              </div>
+            <div className="space-y-2">
+              <label className={labelClass(false)}>Invoice Date</label>
+              <input
+                type="date"
+                name="invoice_date"
+                value={invoice.invoice_date || ""}
+                onChange={handleField}
+                className={inputClass(false)}
+                required
+              />
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Date</label>
-                <input
-                  type="date"
-                  name="invoice_date"
-                  value={invoice.invoice_date || ""}
-                  onChange={handleField}
-                  className="w-full border border-gray-300 px-4 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-black"
-                  required
-                />
-              </div>
+            <div className="space-y-2">
+              <label className={labelClass(false)}>Payment Date</label>
+              <input
+                type="date"
+                name="payment_date"
+                value={invoice.payment_date || ""}
+                onChange={handleField}
+                className={inputClass(false)}
+              />
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Date</label>
-                <input
-                  type="date"
-                  name="payment_date"
-                  value={invoice.payment_date || ""}
-                  onChange={handleField}
-                  className="w-full border border-gray-300 px-4 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-black"
-                />
-              </div>
+            <div className="space-y-2">
+              <label className={labelClass(false)}>Invoice Type (Company)</label>
+              <select
+                name="invoice_type"
+                value={invoice.invoice_type || ""}
+                onChange={handleField}
+                className={`${inputClass(false)} bg-white`}
+              >
+                <option value="">Select Company</option>
+                <option value="WT">WT</option>
+                <option value="WTPL">WTPL</option>
+                <option value="WTX">WTX</option>
+                <option value="WTXPL">WTXPL</option>
+              </select>
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Type</label>
-                <select
-                  name="invoice_type"
-                  value={invoice.invoice_type || ""}
-                  onChange={handleField}
-                  className="w-full border border-gray-300 px-4 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-black bg-white"
-                >
-                  <option value="">Select Company</option>
-                  <option value="WT">WT</option>
-                  <option value="WTPL">WTPL</option>
-                  <option value="WTX">WTX</option>
-                  <option value="WTXPL">WTXPL</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">GST Payment Status</label>
-                <select
-                  name="gst_payment_status"
-                  value={isIndian(client) ? (invoice.gst_payment_status || "Pending") : "NA"}
-                  onChange={handleField}
-                  disabled={!isIndian(client)}
-                  className="w-full border border-gray-300 px-4 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-black bg-white disabled:bg-gray-100"
-                >
-                  <option value="Pending">Pending</option>
-                  <option value="Paid">Paid</option>
-                  <option value="Partial">Partial</option>
-                  {!isIndian(client) && <option value="NA">NA</option>}
-                </select>
-                {!isIndian(client) && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    GST not applicable (international client) — saved as “NA”.
-                  </p>
-                )}
-              </div>
+            <div className="space-y-2">
+              <label className={labelClass(false)}>GST Payment Status</label>
+              <select
+                name="gst_payment_status"
+                value={isIndian(client) ? (invoice.gst_payment_status || "Pending") : "NA"}
+                onChange={handleField}
+                disabled={!isIndian(client)}
+                className={`${inputClass(false)} bg-white disabled:bg-gray-100`}
+              >
+                <option value="Pending">Pending</option>
+                <option value="Paid">Paid</option>
+                <option value="Partial">Partial</option>
+                {!isIndian(client) && <option value="NA">NA</option>}
+              </select>
+              {!isIndian(client) && (
+                <p className="text-xs text-gray-500 mt-1">
+                  GST not applicable (international client) — saved as “NA”.
+                </p>
+              )}
             </div>
           </div>
 
           {/* ===== Services ===== */}
-          <div className="mb-2 flow-root">
+          <div className="my-8 border-t border-gray-200" />
+          <div className="mb-2">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Services</h3>
 
             {(invoice.services || []).map((row, idx) => (
               <div
                 key={idx}
+                className="mb-6"
                 style={{
                   display: "flex",
                   flexDirection: "column",
                   gap: 12,
                   padding: 16,
                   border: "1px solid #e5e7eb",
-                  borderRadius: 8,
+                  borderRadius: 12,
                   background: "#f9fafb",
-                  marginBottom: 24,
-                  position: "relative",
-                  overflow: "visible",
-                  clear: "both",
-                  
                 }}
               >
                 <div>
@@ -447,6 +496,7 @@ export default function EditInvoice() {
                       updateService(idx, { name: (opts || []).map((o) => o.value) })
                     }
                     placeholder="Select Service(s)"
+                    classNamePrefix="rs"
                   />
                 </div>
 
@@ -457,10 +507,9 @@ export default function EditInvoice() {
                   <textarea
                     value={row.description || ""}
                     onChange={(e) => updateService(idx, { description: e.target.value })}
-                    className="w-full border border-gray-300 px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-black"
+                    className="w-full border border-gray-300 px-3 py-2 rounded-[10px] focus:outline-none focus:ring-2 focus:ring-gray-200"
                     rows={3}
                     placeholder="Enter Service Description"
-                    style={{ display: "block" }}
                   />
                 </div>
 
@@ -471,61 +520,61 @@ export default function EditInvoice() {
                   <input
                     type="number"
                     value={row.amount ?? 0}
-                    onChange={(e) =>
-                      updateService(idx, { amount: Number(e.target.value || 0) })
-                    }
-                    className="w-full border border-gray-300 px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-black"
-                    style={{ display: "block" }}
+                    onChange={(e) => updateService(idx, { amount: Number(e.target.value || 0) })}
+                    className="w-full border border-gray-300 px-3 py-2 rounded-[10px] focus:outline-none focus:ring-2 focus:ring-gray-200"
                   />
                 </div>
 
                 {(invoice.services || []).length > 1 && (
-                  <button type="button" onClick={() => removeService(idx)} className={btn}>
+                  <button type="button" onClick={() => removeService(idx)} className={outlineBtn}>
                     Remove Service
                   </button>
                 )}
               </div>
             ))}
 
-            <button type="button" onClick={addService} className={btn}>
+            <button type="button" onClick={addService} className={primaryBtn}>
               {invoice.services?.length ? "Add Another Service" : "Add Service"}
             </button>
           </div>
 
           {/* ===== Totals ===== */}
           <div className="my-8 border-t border-gray-200" />
-          <div className="mb-10 flow-root">
+          <div className="mb-10">
             <h3 className="text-lg font-semibold text-gray-900 mb-3">Totals</h3>
-            <div className="flow-root bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
               <p className="mb-1">Subtotal: ₹{currency(subtotal)}</p>
               {cgst > 0 && <p className="mb-1">CGST ({cgstRate}%): ₹{currency(cgst)}</p>}
               {sgst > 0 && <p className="mb-1">SGST ({sgstRate}%): ₹{currency(sgst)}</p>}
               {igst > 0 && <p className="mb-1">IGST ({igstRate}%): ₹{currency(igst)}</p>}
-              <p className="mb-1"><b>Total Tax:</b> ₹{currency(tax_amount)}</p>
-              <p className="mb-0"><b>Total Amount:</b> ₹{currency(total_amount)}</p>
+              <p className="mb-1">
+                <b>Total Tax:</b> ₹{currency(tax_amount)}
+              </p>
+              <p className="mb-0">
+                <b>Total Amount:</b> ₹{currency(total_amount)}
+              </p>
             </div>
           </div>
 
           {/* ===== Payment ===== */}
-          <div className="my-4 border-t border-gray-200 edit-invoice-payment" />
-          <div className="mb-4 mt-20 flow-root clear-both pt-5">
+          <div className="my-8 border-t border-gray-200" />
+          <div className="mb-4">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment</h3>
 
             {/* Balance after this payment */}
             <div className="bg-gray-50 border border-gray-200 rounded-md p-3 mb-4">
               <b>Balance Due (after this payment):</b>{" "}
-              ₹{currency(
-                (invoice.payment_status === "Partial" || invoice.payment_status === "Paid")
+              ₹
+              {currency(
+                invoice.payment_status === "Partial" || invoice.payment_status === "Paid"
                   ? remainingAfterThisPayment
                   : remainingBeforeThisPayment
               )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Payment Status
-                </label>
+              <div className="space-y-2">
+                <label className={labelClass(false)}>Payment Status</label>
                 <select
                   name="payment_status"
                   value={invoice.payment_status}
@@ -535,7 +584,7 @@ export default function EditInvoice() {
                     }
                     handleField(e);
                   }}
-                  className="w-full border border-gray-300 px-4 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-black bg-white"
+                  className={`${inputClass(false)} bg-white`}
                   required
                 >
                   <option value="Pending">Pending</option>
@@ -544,46 +593,40 @@ export default function EditInvoice() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Invoice Amount
-                </label>
+              <div className="space-y-2">
+                <label className={labelClass(false)}>Invoice Amount</label>
                 <input
                   type="number"
                   step="0.01"
                   value={total_amount}
                   readOnly
-                  className="w-full bg-gray-100 border border-gray-300 px-4 py-2 rounded-md text-gray-700"
+                  className={`${inputClass(false)} bg-gray-100`}
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Already Paid
-                </label>
+              <div className="space-y-2">
+                <label className={labelClass(false)}>Already Paid</label>
                 <input
                   type="number"
                   step="0.01"
                   value={alreadyPaid}
                   readOnly
-                  className="w-full bg-gray-100 border border-gray-300 px-4 py-2 rounded-md text-gray-700"
+                  className={`${inputClass(false)} bg-gray-100`}
                 />
               </div>
             </div>
 
             {(invoice.payment_status === "Partial" || invoice.payment_status === "Paid") && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Paying Amount (now)
-                  </label>
+                <div className="space-y-2">
+                  <label className={labelClass(false)}>Paying Amount (now)</label>
                   <input
                     type="number"
                     step="0.01"
                     min="0"
                     value={amountPayingNow}
                     onChange={(e) => setAmountPayingNow(Number(e.target.value || 0))}
-                    className="w-full border border-gray-300 px-4 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-black"
+                    className={inputClass(false)}
                     placeholder="Enter amount"
                   />
                   {Number(amountPayingNow || 0) > remainingBeforeThisPayment && (
@@ -593,8 +636,8 @@ export default function EditInvoice() {
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                <div className="space-y-2">
+                  <label className={labelClass(false)}>
                     Remaining Amount (after this payment)
                   </label>
                   <input
@@ -602,7 +645,7 @@ export default function EditInvoice() {
                     step="0.01"
                     value={remainingAfterThisPayment}
                     readOnly
-                    className="w-full bg-gray-100 border border-gray-300 px-4 py-2 rounded-md text-gray-700"
+                    className={`${inputClass(false)} bg-gray-100`}
                   />
                 </div>
               </div>
@@ -610,27 +653,23 @@ export default function EditInvoice() {
 
             {invoice.payment_status === "Pending" && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Remaining Amount
-                  </label>
+                <div className="space-y-2">
+                  <label className={labelClass(false)}>Remaining Amount</label>
                   <input
                     type="number"
                     step="0.01"
                     value={remainingBeforeThisPayment}
                     readOnly
-                    className="w-full bg-gray-100 border border-gray-300 px-4 py-2 rounded-md text-gray-700"
+                    className={`${inputClass(false)} bg-gray-100`}
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Status Note
-                  </label>
+                <div className="space-y-2">
+                  <label className={labelClass(false)}>Status Note</label>
                   <input
                     type="text"
                     value="No payment recorded yet"
                     readOnly
-                    className="w-full bg-gray-100 border border-gray-300 px-4 py-2 rounded-md text-gray-700"
+                    className={`${inputClass(false)} bg-gray-100`}
                   />
                 </div>
               </div>
@@ -638,16 +677,10 @@ export default function EditInvoice() {
           </div>
 
           {/* ===== Actions ===== */}
-          <div className="flex justify-end gap-4 mt-10">
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
-              className={btn}
-              disabled={saving}
-            >
+          <div className="flex justify-end gap-3 mt-8">
+            <button type="button" onClick={() => navigate(-1)} className={outlineBtn} disabled={saving}>
               ← Back
             </button>
-
             <button
               type="submit"
               disabled={
@@ -656,7 +689,7 @@ export default function EditInvoice() {
                   Number(invoice.amount_paid_total || 0) + Number(amountPayingNow || 0) >
                     Number(total_amount || 0))
               }
-              className={btn}
+              className={primaryBtn}
             >
               {saving ? "Saving..." : "Save Changes"}
             </button>
