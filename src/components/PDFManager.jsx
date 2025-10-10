@@ -846,33 +846,30 @@ export default function PDFManager() {
                             <td className="px-6 py-4 text-sm">{formatFileSize(pdf.originalSize)}</td>
                             <td className="px-6 py-4 text-sm text-gray-500">{formatDate(pdf.createdAt)}</td>
                             <td className="px-6 py-4 text-sm text-gray-500">{formatDate(pdf.updatedAt)}</td>
-                            <td className="px-6 py-4 text-center space-x-2">
-                              <button
-                                onClick={() => handlePreview(pdf)}
-                                className="px-3 py-1 text-xs border rounded-lg hover:bg-gray-100 edit"
-                                title="Open invoice preview in a new tab"
-                              >
-                                Preview
-                              </button>
-                              <button
-                                onClick={() => handleView(pdf)}
-                                className="px-3 py-1 text-xs border rounded-lg hover:bg-gray-100 edit"
-                                title="Open invoice preview here"
-                              >
-                                View
-                              </button>
-                              <button
-                                onClick={() => handleDownload(pdf)}
-                                disabled={downloading === rowKey}
-                                className={`edit px-3 py-1 text-xs rounded-lg text-white ${
-                                  downloading === rowKey
-                                    ? "bg-gray-400 cursor-not-allowed"
-                                    : "bg-blue-600 hover:bg-blue-700"
-                                }`}
-                              >
-                                {downloading === rowKey ? "Downloading..." : "Download"}
-                              </button>
-                            </td>
+                         <td className="px-6 py-4 text-center">
+  <div className="flex justify-center items-center space-x-2">
+    <button
+      onClick={() => handlePreview(pdf)}
+      className="px-3 py-1 text-xs border rounded-lg edit  transition"
+      title="Open invoice preview in a new tab"
+    >
+      Preview
+    </button>
+
+    <button
+      onClick={() => handleDownload(pdf)}
+      disabled={downloading === rowKey}
+      className={`px-3 edit py-1 text-xs rounded-lg text-white transition ${
+        downloading === rowKey
+          ? "bg-gray-400 cursor-not-allowed"
+          : "bg-blue-600 "
+      }`}
+    >
+      {downloading === rowKey ? "Downloading..." : "Download"}
+    </button>
+  </div>
+</td>
+
                           </tr>
                         );
                       })}

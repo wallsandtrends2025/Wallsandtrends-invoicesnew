@@ -167,10 +167,11 @@ select{border:1px solid #AAAAAA !important;}
 table{border: 1px solid #AAAAAA;}
 .rs__control input{border:0 !important;}
 .link-poject-field input{border:0 !important;}
-
+.services-block input{border: 0 !important;}
+svg{color: #ffffff;}
 
 @media (max-width:1200px){
-  nav .relative{padding: 0 5px;}
+  nav .relative{padding: 0 5px;color: #ffffff;}
   nav .relative button{font-size: 11px;}
   nav a{font-size: 11px;}
 }
@@ -181,7 +182,7 @@ table{border: 1px solid #AAAAAA;}
   .w-full{max-width: 100%;}
   .menu-bar{display: block; }
   main{margin: 0;}
-  .open-sidebar{width: 100%; top:90px}
+  .open-sidebar{width: 100%; top:90px;background: linear-gradient(1deg,rgba(59, 89, 151, 1) 0%, rgba(255, 222, 85, 1) 100%);color: #ffffff;}
   .grid{display: block;}
   .form-block textarea{width: 95% !important;}
 

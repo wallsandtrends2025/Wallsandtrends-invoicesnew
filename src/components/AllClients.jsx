@@ -151,7 +151,7 @@ export default function AllClients() {
       className={[
         "w-9 h-9 rounded-full border flex items-center justify-center text-sm transition-colors",
         active
-          ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+          ? "bg-[#3b5997] text-white border-blue-600 shadow-sm"
           : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100",
         disabled ? "opacity-50 cursor-not-allowed hover:bg-white" : "cursor-pointer",
       ].join(" ")}
@@ -267,8 +267,8 @@ export default function AllClients() {
           <div className="bg-[#ffffff] p-[30px] border-curve rounded-xl shadow overflow-hidden mt-[20px]">
             <div className="relative overflow-x-auto table-height overflow-y-auto border border-[#AAAAAA] rounded-lg border-curve">
               <table className="min-w-full border-collapse text-sm text-gray-700 border-curve">
-                <thead className="bg-[#F1F1F1] text-gray-700 sticky top-0 z-10 p-[10px] ">
-                  <tr className="divide-x divide-[#AAAAAA] p-[10px] text-[#808080]">
+                <thead className="bg-[#3b5997] text-[#ffffff] sticky top-0 z-10 p-[10px] ">
+                  <tr className="divide-x divide-[#AAAAAA] p-[10px] text-[#ffffff]">
                     {[
                       "Client Name",
                       "Company",
