@@ -27,6 +27,7 @@ import PreviewProject from "./components/PreviewProject";
 import PDFManager from "./components/PDFManager";
 import PDFViewer from "./components/PDFViewer";
 import AuditManager from "./components/AuditManager";
+// import InvoicePreviewTest from "./components/InvoicePreviewTest"; // Component not found
 
 
 function ProtectedRoute({ children }) {
@@ -51,6 +52,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/repair" element={<RepairInvoices />} />
+      {/* <Route path="/test-invoice-preview" element={<InvoicePreviewTest />} /> */}
 
       <Route
         path="/dashboard"
@@ -60,6 +62,8 @@ export default function App() {
           </ProtectedRoute>
         }
       >
+        {/* Default route - redirect to home */}
+        <Route index element={<Navigate to="/dashboard/home" replace />} />
         {/* Relative paths under /dashboard */}
         <Route path="home" element={<Home />} />
         <Route path="add-client" element={<ClientSignup />} />

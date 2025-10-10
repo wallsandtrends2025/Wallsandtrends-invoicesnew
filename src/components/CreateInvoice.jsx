@@ -1,4 +1,4 @@
- // src/pages/CreateInvoice.jsx
+// src/pages/CreateInvoice.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -100,6 +100,13 @@ export default function CreateInvoice() {
         id: doc.id,
         ...doc.data(),
       }));
+
+      // Debug logging for client data
+      console.log('🔍 DEBUG: CreateInvoice - Total clients loaded:', clientList.length);
+      console.log('🔍 DEBUG: CreateInvoice - Sample client data:', clientList.slice(0, 3));
+      console.log('🔍 DEBUG: CreateInvoice - All company_group values:', [...new Set(clientList.map(c => c.company_group))]);
+      console.log('🔍 DEBUG: CreateInvoice - All company_name values:', [...new Set(clientList.map(c => c.company_name))]);
+
       setClients(clientList);
 
       const projectSnap = await getDocs(collection(db, "projects"));
@@ -174,10 +181,10 @@ export default function CreateInvoice() {
 
   // company -> group mapping & filtered clients
   const companyToGroup = {
-    WT: "WT_WTPL",
-    WTPL: "WT_WTPL",
-    WTX: "WTX_WTXPL",
-    WTXPL: "WTX_WTXPL",
+    WT: "WT",
+    WTPL: "WT",  // WTPL should show same clients as WT
+    WTX: "WTX",
+    WTXPL: "WTX", // WTXPL should show same clients as WTX
   };
 
   // sort clients A→Z (company_name, then client_name)
@@ -195,8 +202,37 @@ export default function CreateInvoice() {
   // filter by selected company group
   const filteredClients = useMemo(() => {
     const group = companyToGroup[yourCompany];
-    if (!group) return [];
-    return sortedClients.filter((c) => c.company_group === group);
+    console.log('🔍 DEBUG: CreateInvoice - Filtering clients for company:', yourCompany, 'group:', group);
+    console.log('🔍 DEBUG: CreateInvoice - Total sorted clients:', sortedClients.length);
+    if (!group) {
+      console.log('⚠️ DEBUG: CreateInvoice - No group found for company:', yourCompany);
+      return [];
+    }
+
+    // Primary filter: by company_group
+    let filtered = sortedClients.filter((c) => c.company_group === group);
+
+    // Fallback: if no clients found by company_group, try by company_name
+    if (filtered.length === 0) {
+      console.log('⚠️ DEBUG: CreateInvoice - No clients found by company_group, trying company_name fallback');
+      filtered = sortedClients.filter((c) =>
+        c.company_name === yourCompany ||
+        (c.company_name === 'WT' && (yourCompany === 'WT' || yourCompany === 'WTPL')) ||
+        (c.company_name === 'WTPL' && (yourCompany === 'WT' || yourCompany === 'WTPL')) ||
+        (c.company_name === 'WTX' && (yourCompany === 'WTX' || yourCompany === 'WTXPL')) ||
+        (c.company_name === 'WTXPL' && (yourCompany === 'WTX' || yourCompany === 'WTXPL'))
+      );
+    }
+
+    // Last resort: if still no clients and we have clients in total, show all clients
+    if (filtered.length === 0 && sortedClients.length > 0) {
+      console.log('⚠️ DEBUG: CreateInvoice - No clients found with filtering, showing all clients as fallback');
+      filtered = sortedClients;
+    }
+
+    console.log('✅ DEBUG: CreateInvoice - Filtered clients:', filtered.length, 'clients for group:', group);
+    console.log('✅ DEBUG: CreateInvoice - Filtered client sample:', filtered.slice(0, 3));
+    return filtered;
   }, [sortedClients, yourCompany]);
 
   // clear selected client if mismatch after company change
@@ -367,12 +403,17 @@ export default function CreateInvoice() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: "#f3f4f6", display: "flex", justifyContent: "center", padding: "2rem" }}>
+    <div style={{ display: "flex", justifyContent: "center", padding: "2rem" }}>
       {/* Turn OFF native HTML5 validation */}
+        {/* Title chip */}
+     
+     
       <form onSubmit={handleSubmit} noValidate
-        style={{ background: "#fff", borderRadius: "10px", padding: "30px", width: "100%", maxWidth: "700px", boxShadow: "0 4px 10px rgba(0,0,0,0.1)" }}>
-        <h2 style={{ fontSize: "24px", fontWeight: "bold", textAlign: "center", marginBottom: "30px" }}>Create Invoice</h2>
-
+        style={{  borderRadius: "10px", padding: "20px", width: "100%",  }}>
+           <div className="bg-[#ffffff] shadow-sm mb-4 p-[15px] border-curve mb-[20px]">
+          <h2 className="font-semibold text-[#000000] m-[0]">Create Invoice</h2>
+        </div>
+ <div className="p-[15px] bg-[#ffffff] border-curve">
         {/* Company (required) */}
         <RequiredLabel>Select Company</RequiredLabel>
         <select
@@ -383,7 +424,7 @@ export default function CreateInvoice() {
             width: "100%",
             padding: "10px",
             marginBottom: "6px",
-            borderRadius: 4,
+            borderRadius: 10,
             border: `1px solid ${errors.yourCompany ? "#d32f2f" : "#ccc"}`,
           }}
         >
@@ -396,7 +437,7 @@ export default function CreateInvoice() {
         {errors.yourCompany && <small style={{ color: "#d32f2f" }}>{errors.yourCompany}</small>}
 
         <div style={{ display: "flex", gap: "20px", marginTop: 14, marginBottom: 8 }}>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1 }} className="mr-[10px]">
             <RequiredLabel>Invoice Date</RequiredLabel>
             <input
               type="date"
@@ -406,7 +447,7 @@ export default function CreateInvoice() {
               style={{
                 width: "100%",
                 padding: "10px",
-                borderRadius: 4,
+                borderRadius: 10,
                 border: `1px solid ${errors.invoiceDate ? "#d32f2f" : "#ccc"}`,
               }}
             />
@@ -423,7 +464,7 @@ export default function CreateInvoice() {
               style={{
                 width: "100%",
                 padding: "10px",
-                borderRadius: 4,
+                borderRadius: 10,
                 border: `1px solid ${errors.invoiceTitle ? "#d32f2f" : "#ccc"}`,
               }}
             />
@@ -433,7 +474,7 @@ export default function CreateInvoice() {
 
         {/* Invoice Number */}
         <label style={{ fontWeight: "600" }}>Invoice Number</label>
-        <input type="text" value={previewInvoiceNumber} disabled style={{ width: "100%", padding: "10px", marginBottom: "20px", background: "#eee", fontWeight: "bold" }} />
+        <input type="text" value={previewInvoiceNumber} disabled style={{ width: "100%", padding: "10px", marginBottom: "20px", background: "#ffffff", fontWeight: "bold", borderRadius: "10px" }} />
 
         {/* Client (filtered by company) */}
         <RequiredLabel>Select Client</RequiredLabel>
@@ -441,7 +482,7 @@ export default function CreateInvoice() {
           isDisabled={!yourCompany}
           options={filteredClients.map((client) => ({
             value: client.id,
-            label: `${client.company_name ?? "—"} — ${client.client_name ?? "—"}`,
+            label: `${client.client_name ?? "—"}`,
           }))}
           value={
             filteredClients.find((c) => c.id === selectedClientId)
@@ -464,6 +505,7 @@ export default function CreateInvoice() {
               ...base,
               padding: 2,
               marginBottom: 6,
+              borderRadius: 10,
               opacity: yourCompany ? 1 : 0.7,
               borderColor: errors.selectedClientId ? "#d32f2f" : base.borderColor,
               boxShadow: errors.selectedClientId ? "0 0 0 1px #d32f2f" : base.boxShadow,
@@ -480,11 +522,14 @@ export default function CreateInvoice() {
           value={selectedProject}
           onChange={(selected) => setSelectedProject(selected)}
           placeholder="Select Project..."
+          className="link-poject-field"
           isSearchable
           styles={{
             control: (base) => ({
               ...base,
+              
               padding: "2px",
+              borderRadius: "10px",
               marginBottom: "20px",
             }),
           }}
@@ -609,7 +654,7 @@ export default function CreateInvoice() {
         <button
           type="button"
           onClick={() => setServices([...services, { name: [], description: "", amount: "" }])}
-          style={{ marginBottom: "20px", padding: "10px 20px", background: "#000", color: "#fff", borderRadius: "5px", fontWeight: "bold" }}
+          style={{ marginBottom: "20px", padding: "10px 20px", background: "rgb(59 89 151)", color: "#fff", borderRadius: "5px", fontWeight: "bold" }}
         >
           {services.length === 0 ? "Add Service" : "Add Another Service"}
         </button>
@@ -620,7 +665,7 @@ export default function CreateInvoice() {
           <select
             value={paymentStatus}
             onChange={(e) => setPaymentStatus(e.target.value)}
-            style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
+            style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px solid #ccc" }}
           >
             <option value="Pending">Pending</option>
             <option value="Paid">Paid</option>
@@ -635,7 +680,7 @@ export default function CreateInvoice() {
             value={gstPaymentStatus}
             onChange={(e) => setGstPaymentStatus(e.target.value)}
             disabled={!(selectedClient && selectedClient.country === "India")}
-            style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc", background: !(selectedClient && selectedClient.country === "India") ? "#f3f4f6" : "#fff" }}
+            style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px solid #ccc", background: !(selectedClient && selectedClient.country === "India") ? "#f3f4f6" : "#fff" }}
             title={!(selectedClient && selectedClient.country === "India") ? "GST not applicable for this client" : ""}
           >
             <option value="Pending">Pending</option>
@@ -675,23 +720,99 @@ export default function CreateInvoice() {
           </div>
         )}
 
-        <button
-          type="submit"
-          disabled={isGeneratingPDF}
-          style={{
-            width: "100%",
-            padding: "15px",
-            background: isGeneratingPDF ? "#cccccc" : "#000000",
-            color: "#fff",
-            borderRadius: "5px",
-            fontWeight: "bold",
-            fontSize: "16px",
-            cursor: isGeneratingPDF ? "not-allowed" : "pointer",
-            opacity: isGeneratingPDF ? 0.7 : 1,
-          }}
-        >
-          {isGeneratingPDF ? "Processing..." : "Submit Invoice"}
-        </button>
+        <div style={{ display: "flex", justifyContent: "center", marginTop: "20px" }}>
+          <div style={{ display: "flex", gap: "16px", maxWidth: "400px", width: "100%" }}>
+            <button
+              type="submit"
+              disabled={isGeneratingPDF}
+              style={{
+                flex: 1,
+                padding: "16px 24px",
+                background: isGeneratingPDF ? "#cccccc" : "#1E3A8A",
+                color: "#fff",
+                borderRadius: "12px",
+                fontWeight: "bold",
+                fontSize: "18px",
+                border: "2px solid #1E3A8A",
+                cursor: isGeneratingPDF ? "not-allowed" : "pointer",
+                opacity: isGeneratingPDF ? 0.7 : 1,
+                height: "44px",
+                boxShadow: "0 3px 6px rgba(30, 58, 138, 0.2)",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+              onMouseOver={(e) => {
+                if (!isGeneratingPDF) {
+                  e.target.style.backgroundColor = "#3b5997";
+                  e.target.style.borderColor = "#3b5997";
+                  e.target.style.boxShadow = "0 5px 10px #3b5997";
+                }
+              }}
+              onMouseOut={(e) => {
+                if (!isGeneratingPDF) {
+                  e.target.style.backgroundColor = "#3b5997";
+                  e.target.style.borderColor = "#3b5997";
+                  e.target.style.boxShadow = "0 3px 6px #3b5997";
+                }
+              }}
+            >
+              {isGeneratingPDF ? "Processing..." : "Submit Invoice"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                // Clear all form fields
+                setYourCompany("");
+                setSelectedClientId("");
+                setSelectedClient(null);
+                setSelectedProject(null);
+                setPreviewInvoiceNumber("");
+                setInvoiceTitle("");
+                setServices([]);
+                setPaymentStatus("Pending");
+                setGstPaymentStatus("Pending");
+                setErrors({
+                  yourCompany: "",
+                  invoiceDate: "",
+                  invoiceTitle: "",
+                  selectedClientId: "",
+                  services: "",
+                  serviceRows: {},
+                });
+
+              }}
+              style={{
+                flex: 1,
+                padding: "16px 24px",
+                background: "#3b5997",
+                color: "#fff",
+                borderRadius: "12px",
+                fontWeight: "bold",
+                fontSize: "18px",
+                border: "2px solid #3b5997",
+                cursor: "pointer",
+                height: "44px",
+                boxShadow: "0 3px 6px #3b5997",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+              onMouseOver={(e) => {
+                e.target.style.backgroundColor = "#3b5997";
+                e.target.style.borderColor = "#3b5997";
+                e.target.style.boxShadow = "0 5px 10px #3b5997";
+              }}
+              onMouseOut={(e) => {
+                e.target.style.backgroundColor = "#3b5997";
+                e.target.style.borderColor = "#3b5997";
+                e.target.style.boxShadow = "0 3px 6px #3b5997";
+              }}
+            >
+              Clear Form
+            </button>
+          </div>
+        </div>
 
         <style jsx>{`
           @keyframes spin {
@@ -709,6 +830,7 @@ export default function CreateInvoice() {
             -moz-appearance: textfield;
           }
         `}</style>
+        </div>
       </form>
     </div>
   );

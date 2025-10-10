@@ -1,497 +1,775 @@
-// utils/generateProformaInvoicePDF.js
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+﻿import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+/**
+ * Proforma/quotation PDF generator aligned with the shared Walls & Trends visual reference.
+ */
+async function loadCalibriTTF(doc) {
+  try {
+    const ttfUrl = `${origin}/fonts/calibri/Calibri.ttf`;
+
+    console.log('🔍 Attempting to load Calibri font from:', ttfUrl);
+    const res = await fetch(ttfUrl);
+    if (!res.ok) {
+      console.warn('⚠️ Calibri font fetch failed, status:', res.status);
+      return false;
+    }
+
+    const buf = await res.arrayBuffer();
+    console.log('📦 Calibri font buffer size:', buf.byteLength, 'bytes');
+    if (buf.byteLength === 0) {
+      console.warn('⚠️ Calibri font buffer is empty');
+      return false;
+    }
+
+    const base64 = arrayBufferToBase64(buf);
+    console.log('🔄 Calibri font converted to base64, length:', base64.length);
+    doc.addFileToVFS('Calibri.ttf', base64);
+
+    try {
+      console.log('➕ Adding Calibri font to jsPDF...');
+      doc.addFont('Calibri.ttf', 'Calibri', 'normal');
+      
+      // Validate font was added properly
+      const fontList = doc.getFontList();
+      console.log('📋 Available fonts after adding Calibri:', fontList);
+      
+      // Check if font has unicode metadata
+      if (doc.internal && doc.internal.getFont) {
+        const fontObj = doc.internal.getFont('Calibri', 'normal');
+        console.log('🔍 Font object metadata check:', {
+          hasMetadata: !!fontObj?.metadata,
+          hasUnicode: !!fontObj?.metadata?.Unicode,
+          fontObj: fontObj
+        });
+        
+        // If no unicode metadata, return false to use fallback
+        if (!fontObj?.metadata?.Unicode) {
+          console.error('❌ Calibri font loaded but missing Unicode metadata - falling back to Helvetica');
+          return false;
+        }
+      }
+      
+      console.log('✅ Calibri font loaded successfully with unicode metadata');
+      return true;
+    } catch (fontError) {
+      console.error('❌ Error adding Calibri font to jsPDF:', fontError);
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ Error loading Calibri font:', error);
+    return false;
+  }
+}
+
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.byteLength; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
 
 export async function generateProformaInvoicePDF(invoice, client) {
-  // Use A4 for consistent sizing with regular invoices
+  if (!invoice) throw new Error('Document data is required for PDF generation');
+  if (!client) throw new Error('Client data is required for PDF generation');
+
   const doc = new jsPDF('p', 'mm', 'a4');
 
-  // ---------- Base fonts & colors ----------
-  doc.setFont("helvetica", "normal");
-  const BLUE   = [59, 89, 152];      // WT heading color
-  const YELLOW = [255, 222, 88];     // WTX heading color
-  const BLACK  = [0, 0, 0];
-  const GRAY   = [169, 169, 169];    // Gray border color
+  // Declare origin variable at the top level to avoid lexical declaration error
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
-  // ---------- Brand / assets ----------
-  const isWT  = invoice.invoice_type === "WT"  || invoice.invoice_type === "WTPL";
-  const isWTX = invoice.invoice_type === "WTX" || invoice.invoice_type === "WTXPL";
+  const baseFont = await loadCalibriTTF(doc) ? 'Calibri' : 'Helvetica';
+
+  const BLACK = [0, 0, 0];
+  const GRAY = [128, 128, 128];
+  const BLUE = [59, 89, 152];
+  const YELLOW = [255, 222, 88];
+  const PAGE_W = 210;
+  const M_L = 15, M_R = 15, M_T = 12; // Slightly increased margins for better centering
+  const FULL_W = PAGE_W - M_L - M_R;
+
+  const docType = (invoice?.proforma_type || invoice?.quotation_type || invoice?.invoice_type || "").toString().toUpperCase().trim();
+  console.log('🔍 PDF DEBUG: Document type detection:', {
+    proforma_type: invoice?.proforma_type,
+    quotation_type: invoice?.quotation_type,
+    invoice_type: invoice?.invoice_type,
+    final_docType: docType,
+    docType_length: docType.length
+  });
+
+  // Enhanced type detection for WTX
+  const isWT = docType === 'WT' || docType === 'WTPL' || docType.includes('WT');
+  const isWTX = docType === 'WTX' || docType === 'WTXPL' || docType.includes('WTX');
   const BRAND = isWTX ? YELLOW : BLUE;
 
-  const companyName = isWT ? "Walls And Trends" : "Walls And Trends WTX";
-  const companyGST  = isWT ? "36AACFW6827B1Z8" : "36AAACW8991C1Z9";
+  console.log('🔍 PDF DEBUG: Enhanced type analysis:', {
+    docType,
+    isWT,
+    isWTX,
+    BRAND: isWTX ? 'YELLOW' : 'BLUE',
+    docType_charCodes: docType.split('').map(c => c.charCodeAt(0))
+  });
 
-  const logoPath = `${window.location.origin}${isWT ? "/wt-logo.png" : "/wtx_logo.png"}`;
-  const signaturePath = `${window.location.origin}/csh-sign.PNG`;
+  // Test different type values to ensure logic works
+  console.log('🔍 PDF DEBUG: Testing type detection logic:');
+  const testTypes = ['WT', 'WTX', 'WTPL', 'WTXPL', 'wt', 'wtx'];
+  testTypes.forEach(testType => {
+    const testIsWT = testType === 'WT' || testType === 'WTPL' || testType.includes('WT');
+    const testIsWTX = testType === 'WTX' || testType === 'WTXPL' || testType.includes('WTX');
+    const testLogoPath = testIsWTX ? `${origin}/wtx_logo.png` : `${origin}/wt-logo.png`;
+    console.log(`  ${testType}: isWT=${testIsWT}, isWTX=${testIsWTX}, logo=${testLogoPath}`);
+  });
 
-  // ---------- Helpers ----------
-  const safeToDate = (d) => {
+  console.log('🔍 PDF DEBUG: Brand selection:', {
+    isWT,
+    isWTX,
+    BRAND: isWTX ? 'YELLOW' : 'BLUE'
+  });
+
+  const companyName = 'Walls And Trends';
+  const companyGST = isWT ? '36AACFW6827B1Z8' : '36AAACW8991C1Z9';
+
+  const logoPath = `${origin}${isWTX ? '/wtx_logo.png' : '/wt-logo.png'}`;
+  const signaturePath = `${origin}/csh-sign.PNG`;
+
+  console.log('🔍 PDF DEBUG: Logo path selection:', {
+    origin,
+    logoPath,
+    signaturePath,
+    isWTX,
+    isWT
+  });
+
+  // Test direct logo file access in PDF generation
+  console.log('🔍 PDF DEBUG: Testing direct logo file access...');
+  if (typeof window !== 'undefined') {
+    fetch('/wt-logo.png')
+      .then(response => {
+        console.log('✅ PDF DEBUG: /wt-logo.png accessible:', response.ok, 'status:', response.status);
+        if (response.ok) {
+          console.log('✅ PDF DEBUG: WT logo file exists and is accessible');
+        } else {
+          console.error('❌ PDF DEBUG: WT logo file not accessible, status:', response.status);
+        }
+      })
+      .catch(error => console.error('❌ PDF DEBUG: /wt-logo.png error:', error));
+
+    fetch('/wtx_logo.png')
+      .then(response => {
+        console.log('✅ PDF DEBUG: /wtx_logo.png accessible:', response.ok, 'status:', response.status);
+        if (response.ok) {
+          console.log('✅ PDF DEBUG: WTX logo file exists and is accessible');
+        } else {
+          console.error('❌ PDF DEBUG: WTX logo file not accessible, status:', response.status);
+        }
+      })
+      .catch(error => console.error('❌ PDF DEBUG: /wtx_logo.png error:', error));
+
+    // Test with full URL
+    const fullWtPath = `${window.location.origin}/wt-logo.png`;
+    const fullWtxPath = `${window.location.origin}/wtx_logo.png`;
+
+    console.log('🔍 PDF DEBUG: Testing full URL logo access...');
+    fetch(fullWtPath)
+      .then(response => {
+        console.log('✅ PDF DEBUG: Full WT logo accessible:', response.ok, 'status:', response.status);
+      })
+      .catch(error => console.error('❌ PDF DEBUG: Full WT logo error:', error));
+
+    fetch(fullWtxPath)
+      .then(response => {
+        console.log('✅ PDF DEBUG: Full WTX logo accessible:', response.ok, 'status:', response.status);
+      })
+      .catch(error => console.error('❌ PDF DEBUG: Full WTX logo error:', error));
+  }
+
+  const safeToDate = (value) => {
     try {
-      if (typeof d?.toDate === "function") return d.toDate();
-      if (d instanceof Date) return d;
-      return new Date(d);
+      if (typeof value?.toDate === 'function') return value.toDate();
+      if (value instanceof Date) return value;
+      return new Date(value);
     } catch {
       return new Date();
     }
   };
 
-  async function loadImage(path) {
+  const fmt0 = (n) => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  async function loadImageToDataURL(path) {
     try {
+      console.log('🔍 PDF DEBUG: Loading image from path:', path);
       const res = await fetch(path);
+      console.log('🔍 PDF DEBUG: Fetch response status:', res.status, 'ok:', res.ok);
       if (!res.ok) {
-        console.warn(`Image fetch failed: ${res.status} ${res.statusText} for ${path}`);
+        console.error('❌ PDF DEBUG: Failed to load image:', path, 'Status:', res.status);
+        console.error('❌ PDF DEBUG: Response headers:', [...res.headers.entries()]);
         return null;
       }
       const blob = await res.blob();
+      console.log('✅ PDF DEBUG: Image loaded successfully:', path, 'Type:', blob.type, 'Size:', blob.size);
+      const reader = new FileReader();
       return await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = () => reject(new Error('FileReader failed'));
+        reader.onloadend = () => {
+          console.log('📄 PDF DEBUG: Image converted to DataURL, length:', reader.result?.length || 0);
+          resolve(reader.result);
+        };
+        reader.onerror = () => {
+          console.error('❌ PDF DEBUG: FileReader failed for path:', path);
+          reject(new Error('FileReader failed'));
+        };
         reader.readAsDataURL(blob);
       });
-    } catch (e) {
-      console.warn("Image load failed, continuing without image:", e.message);
+    } catch (error) {
+      console.error('❌ PDF DEBUG: Error loading image:', path, error);
       return null;
     }
   }
 
-  // --- layout constants for A4 (grid) - centered for equal left/right margins ---
-  const PAGE_WIDTH = 210;  // A4 width in mm
-  const PAGE_HEIGHT = 297; // A4 height in mm
-  const CONTENT_WIDTH = 180;  // Total width for content (2 columns + spacing)
-  const MARGIN_L = (PAGE_WIDTH - CONTENT_WIDTH) / 2;  // Center the content
-  const COL_W = 85;  // Column width to fit within centered layout
-  const COL1_X = MARGIN_L;
-  const COL2_X = MARGIN_L + COL_W + 10;  // Added 10mm spacing between columns
-  const FULL_W = COL_W * 2 + 10;  // Account for spacing between columns
-  const LINE_H = 5.5;  // Standard line height for A4
-  const PAD = 8.0;    // Standard padding for A4
+  const COMPANY_STATE = 'telangana';
+  const COMPANY_COUNTRY = 'india';
+  const toLower = (s) => (s || '').toString().trim().toLowerCase();
+  const clientCountry = toLower(client?.country);
+  const clientState = toLower(client?.state);
+  const isIndian = clientCountry === COMPANY_COUNTRY;
+  const isTelangana = clientState === COMPANY_STATE;
 
-  // Debug logging for layout constants
-  console.log('=== Proforma Invoice PDF Debug - Layout Constants ===');
-  console.log('PAGE_WIDTH:', PAGE_WIDTH);
-  console.log('CONTENT_WIDTH:', CONTENT_WIDTH);
-  console.log('MARGIN_L:', MARGIN_L);
-  console.log('COL_W:', COL_W);
-  console.log('COL1_X:', COL1_X);
-  console.log('COL2_X:', COL2_X);
-  console.log('FULL_W:', FULL_W);
-  console.log('LINE_H:', LINE_H);
-  console.log('PAD:', PAD);
+  const rawSubtotal = invoice?.subtotal != null ? Number(invoice.subtotal) : calcSubtotalFromServices(invoice);
+  const subtotal = Number.isFinite(rawSubtotal) ? rawSubtotal : 0;
 
-  // --- draw helpers with auto-wrap & clean grid ---
-  function drawPlainCell({ x, y, w, value }) {
-    doc.setFontSize(10);  // Standard for A4
-    doc.setTextColor(...BLACK);
-
-    const lines = doc.splitTextToSize(String(value ?? ""), w - PAD * 2);
-    const cellHeight = Math.max(8, PAD + (lines.length * LINE_H) + PAD);  // Standard minimum height
-
-    doc.setDrawColor(...BLACK);
-    doc.setLineWidth(0.3);
-    doc.rect(x, y, w, cellHeight);
-
-    doc.text(lines, x + PAD, y + PAD + LINE_H);
-    return cellHeight;
+  let cgstRate = 0;
+  let sgstRate = 0;
+  let igstRate = 0;
+  if (isIndian && isTelangana) {
+    cgstRate = 9;
+    sgstRate = 9;
+  } else if (isIndian) {
+    igstRate = 18;
   }
 
-  function drawLabeledCell({ x, y, w, label, value }) {
-    doc.setFontSize(10);  // Standard for A4
-    doc.setTextColor(...BLACK);
+  const cgstAmount = invoice?.cgst != null ? Number(invoice.cgst) : roundToTwo(subtotal * (cgstRate / 100));
+  const sgstAmount = invoice?.sgst != null ? Number(invoice.sgst) : roundToTwo(subtotal * (sgstRate / 100));
+  const igstAmount = invoice?.igst != null ? Number(invoice.igst) : roundToTwo(subtotal * (igstRate / 100));
+  const totalTax = cgstAmount + sgstAmount + igstAmount;
+  const computedTotal = roundToTwo(subtotal + totalTax);
+  const total = invoice?.total_amount != null ? Number(invoice.total_amount) : computedTotal;
 
-    doc.setFont("helvetica", "bold");
-    const labelText = String(label ?? "");
-    const labelWidth = doc.getTextWidth(labelText + " ");
+  const precise = roundToTwo(total);
+  const rupees = Math.floor(precise);
+  const paise = Math.round((precise - rupees) * 100);
+  let words = convertNumberToWords(rupees);
+  if (paise > 0) {
+    words += ` and ${convertNumberToWords(paise)} Paise`;
+  }
 
-    const valueStartX = x + PAD + labelWidth + 1;
-    const usableFirstLineWidth = Math.max(12, w - (labelWidth + PAD * 2 + 1));  // Increased minimum width
+  let y = M_T;
 
-    doc.setFont("helvetica", "normal");
-    const rawValue = String(value ?? "");
-    const firstLineArr = doc.splitTextToSize(rawValue, usableFirstLineWidth);
-    const firstLine = firstLineArr[0] ?? "";
-    const restText = rawValue.slice(firstLine.length).trim();
-    const restLines = restText ? doc.splitTextToSize(restText, w - PAD * 2) : [];
-    const totalLines = 1 + restLines.length;
+  // Logo - match preview exactly (48px height)
+  console.log('🖼️ PDF DEBUG: Attempting to load logo from path:', logoPath);
 
-    const cellHeight = Math.max(9, PAD + (totalLines * LINE_H) + PAD);  // Increased minimum height
+  let logoBase64 = await loadImageToDataURL(logoPath);
 
-    doc.setDrawColor(...GRAY);
-    doc.setLineWidth(0.3);
-    doc.rect(x, y, w, cellHeight);
+  // Try fallback logos if primary logo fails
+  if (!logoBase64) {
+    console.log('🔄 PDF DEBUG: Primary logo failed, trying fallbacks...');
+    const fallbackPaths = [
+      `${origin}/wtx_logo.png`,
+      `${origin}/wt-logo.png`,
+      `${origin}/invoice-logo.png`
+    ];
 
-    const baseY = y + PAD + LINE_H;
-    doc.setFont("helvetica", "bold");
-    doc.text(labelText, x + PAD, baseY);
-    doc.setFont("helvetica", "normal");
-    doc.text(firstLine, valueStartX, baseY);
-
-    if (restLines.length) {
-      const restY = baseY + LINE_H;
-      doc.text(restLines, x + PAD, restY);
+    for (const fallbackPath of fallbackPaths) {
+      if (fallbackPath !== logoPath) {
+        console.log('🔄 PDF DEBUG: Trying fallback logo:', fallbackPath);
+        logoBase64 = await loadImageToDataURL(fallbackPath);
+        if (logoBase64) {
+          console.log('✅ PDF DEBUG: Fallback logo loaded successfully');
+          break;
+        }
+      }
     }
 
-    return cellHeight;
+    // If still no logo, try alternative extensions
+    if (!logoBase64) {
+      console.log('🔄 PDF DEBUG: Trying alternative extensions...');
+      const altExtensions = ['.png', '.jpg', '.jpeg', '.svg'];
+
+      for (const ext of altExtensions) {
+        if (!logoPath.endsWith(ext)) {
+          const altPath = logoPath.replace(/\.[^/.]+$/, ext);
+          console.log('🔄 PDF DEBUG: Trying alternative extension:', altPath);
+          logoBase64 = await loadImageToDataURL(altPath);
+          if (logoBase64) {
+            console.log('✅ PDF DEBUG: Alternative extension logo loaded successfully');
+            break;
+          }
+        }
+      }
+    }
   }
 
-  function drawTwoColRow(y, left, right, { leftIsPlain = false, rightIsPlain = false } = {}) {
-    const leftH  = leftIsPlain  ? drawPlainCell({ x: COL1_X, y, w: COL_W, value: left.value })
-                                : drawLabeledCell({ x: COL1_X, y, w: COL_W, ...left });
-    const rightH = rightIsPlain ? drawPlainCell({ x: COL2_X, y, w: COL_W, value: right.value })
-                                : drawLabeledCell({ x: COL2_X, y, w: COL_W, ...right });
-    return y + Math.max(leftH, rightH);
+  if (logoBase64) {
+    console.log('✅ PDF DEBUG: Logo loaded successfully, size:', logoBase64.length);
+
+    // Use dimensions that closely match the preview
+    // Preview uses height: 44px, so we use approximately 13.5mm height in PDF
+    // Width is set proportionally to maintain aspect ratio
+    const logoHeight = 13.5; // Slightly increased for better match with preview
+    const logoWidth = 18;    // Slightly increased proportionally
+
+    console.log('🖼️ PDF DEBUG: Using logo dimensions:', { logoWidth, logoHeight });
+
+    doc.addImage(logoBase64, 'PNG', M_L, y, logoWidth, logoHeight);
+    y += logoHeight + 3; // Update Y position with small spacing (slightly increased for new size)
+  } else {
+    console.error('❌ PDF DEBUG: All logo paths failed for path:', logoPath);
+    console.error('❌ PDF DEBUG: Tried paths:', [
+      logoPath,
+      `${origin}/wtx_logo.png`,
+      `${origin}/wt-logo.png`,
+      `${origin}/invoice-logo.png`
+    ]);
   }
 
-  function drawFullWidthRow(y, label, value) {
-    const h = drawLabeledCell({ x: COL1_X, y, w: FULL_W, label, value });
-    return y + h;
-  }
+  // Note: Y position will be updated after logo is processed to maintain proper spacing
 
-  // Load images
-  const logoBase64 = await loadImage(logoPath);
-  const signatureBase64 = await loadImage(signaturePath);
-
-  if (logoBase64) doc.addImage(logoBase64, "PNG", MARGIN_L, 10, 30, 18);
-
-  // Address
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(12);  // Standard for A4
+  // Company address - match preview styling exactly with proper spacing
   doc.setTextColor(...BLACK);
-  doc.text("19/B, 3rd Floor, Progressive Tower, 100 Ft Road,", MARGIN_L, 32);
-  doc.text("Siddhi Vinayak Nagar, Madhapur,", MARGIN_L, 37);
-  doc.text("Hyderabad, Telangana - 500081", MARGIN_L, 42);
+  doc.setFont(baseFont, 'normal');
+  doc.setFontSize(9);
+  doc.text('19/B, 3rd Floor, Progressive Tower', M_L, y + 4); // 4px spacing from logo
+  doc.text('100 Ft Road, Siddhi Vinayak Nagar', M_L, y + 8); // 4px line spacing
+  doc.text('Madhapur, Hyderabad, Telangana - 500081', M_L, y + 12); // 4px line spacing
 
-  // Heading - Changed from "Tax Invoice" to "Proforma Invoice"
-  doc.setFontSize(18);  // Standard for A4
-  doc.setFont("helvetica", "Bold");
+  // Heading - match preview exactly with reduced spacing
+  y += 6; // Add spacing above heading
+  const heading = invoice?.pdf_heading
+    || invoice?.proforma_heading
+    || invoice?.quotation_heading
+    || (invoice?.quotation_id ? 'Quotation' : 'Proforma Invoice');
+
+  doc.setFont(baseFont, 'normal');
+  doc.setFontSize(20);
   doc.setTextColor(...BRAND);
-  doc.text("Proforma Invoice", MARGIN_L, 52);
+  doc.text(heading, M_L, y + 20); // 8px spacing from address
 
-  // ---------- Company row ----------
-  doc.setFontSize(12);  // Standard for A4
-  doc.setTextColor(...BLACK);
-  let y = 55;
+  // Ensure the color is applied by setting it again
+  doc.setTextColor(...BRAND);
 
-  y = drawTwoColRow(
-    y,
-    { value: companyName },
-    { label: "GST IN:", value: companyGST },
-    { leftIsPlain: true, rightIsPlain: false }
-  );
+  y += 24; // Reduced spacing for single page to separate heading from box
+  doc.setFontSize(8);
 
-  // ---------- Metadata rows ----------
-  y = drawTwoColRow(y,
-    { label: "Invoice Number:", value: invoice.invoice_id },
-    { label: "Invoice Date:",   value: formatDate(safeToDate(invoice.created_at || invoice.invoice_date)) }
-  );
+  const numberLabel = invoice?.quotation_id ? 'Quotation Number:' : 'Proforma Number:';
+  const titleLabel = invoice?.quotation_id ? 'Quotation Title:' : 'Proforma Title:';
+  const dateLabel = invoice?.quotation_id ? 'Quotation Date:' : 'Proforma Date:';
+  const totalLabel = invoice?.quotation_id || invoice?.proforma_id || invoice?.proforma_type ? 'Proforma Total Cost:' : 'Total Cost:';
 
+
+  const docNumber = invoice?.proforma_id || invoice?.quotation_id || invoice?.invoice_id || 'N/A';
   const titleFromServices = deriveTitleFromServices(invoice);
-  const titleValue = invoice.invoice_title || titleFromServices || invoice.service_name || "N/A";
-  y = drawTwoColRow(y,
-    { label: "Invoice Title:", value: titleValue },
-    { label: "Total Cost:",    value: `INR ${Number(invoice.total_amount || 0).toLocaleString("en-IN")}` }
+  const docTitle = invoice?.proforma_title
+    || invoice?.quotation_title
+    || invoice?.invoice_title
+    || titleFromServices
+    || invoice?.service_name
+    || 'N/A';
+  const docDate = safeToDate(
+    invoice?.proforma_date
+    || invoice?.quotation_date
+    || invoice?.invoice_date
+    || invoice?.created_at
   );
 
-  // Summary line (plain text, no box to match preview)
-  const metaNote = `This invoice prepared by Walls & Trends (${invoice.invoice_type}) includes ${titleValue} for ${client.client_name || "client"}.`;
-  doc.setFontSize(10);  // Standard for A4
-  doc.setTextColor(...BLACK);
-  const lines = doc.splitTextToSize(metaNote, FULL_W - PAD * 2);
-  doc.text(lines, COL1_X + PAD, y + PAD + LINE_H);
-  const metaHeight = PAD + (lines.length * LINE_H) + PAD;
-  y += metaHeight + 3;
+  const docKind = invoice?.quotation_id ? 'quotation' : 'invoice';
+  const summarySource = invoice?.summary_note || docTitle;
+  const summary = `This ${docKind} prepared by ${companyName} (${isWTX ? 'WTX' : 'WT'}) includes ${summarySource} for ${client?.client_name || 'the client'}.`;
 
-  // ---------- Customer details ----------
-  y += 3;
-  y = drawTwoColRow(y,
-    { label: "Customer Name:",    value: client.client_name || "N/A" },
-    { label: "Customer Address:", value: client.address || "N/A" }
-  );
-  y = drawFullWidthRow(y, "Customer GST IN:", (client.gst_number || "").trim() || "NA");
-
-  // ---------- Services + GST table ----------
-  const fmt0 = (n) => Number(n || 0).toLocaleString("en-IN"); // Indian grouping, no decimals
-
-  // Service line(s)
-  const servicesBodyRows = buildServiceRowsNoDecimals(invoice, fmt0);
-
-  // === GST LOGIC (exactly matches CreateInvoice & InvoicePreview) ===
-  const COMPANY_STATE = "telangana";
-  const COMPANY_COUNTRY = "india";
-  const toLower = (s) => (s || "").toString().trim().toLowerCase();
-
-  const clientCountry = toLower(client.country);
-  const clientState   = toLower(client.state);
-  const isIndian      = clientCountry === COMPANY_COUNTRY;
-  const isTelangana   = clientState === COMPANY_STATE;
-
-  // Determine statutory rates
-  let cgstRate = 0, sgstRate = 0, igstRate = 0;
-  if (isIndian && isTelangana) {
-    cgstRate = 9; sgstRate = 9; igstRate = 0;          // intra-state
-  } else if (isIndian && !isTelangana) {
-    cgstRate = 0; sgstRate = 0; igstRate = 18;         // inter-state → IGST 18%
-  } else {
-    cgstRate = 0; sgstRate = 0; igstRate = 0;          // international
-  }
-
-  const subtotal  = Number(invoice.subtotal) || 0;
-  const storedCGST = Number(invoice.cgst ?? 0);
-  const storedSGST = Number(invoice.sgst ?? 0);
-  const storedIGST = Number(invoice.igst ?? 0);
-
-  // Prefer stored values when present; otherwise compute from rates
-  const cgstAmount = storedCGST || Math.round((subtotal * (cgstRate / 100)) * 100) / 100;
-  const sgstAmount = storedSGST || Math.round((subtotal * (sgstRate / 100)) * 100) / 100;
-  const igstAmount = storedIGST || Math.round((subtotal * (igstRate / 100)) * 100) / 100;
-
-  const totalTax   = cgstAmount + sgstAmount + igstAmount;
-  const calculatedTotal = Math.round((subtotal + totalTax) * 100) / 100; // Preserve 2 decimal places
-
-  // Preserve exact decimal precision from invoice.total_amount
-  let total;
-  if (invoice.total_amount !== undefined && invoice.total_amount !== null) {
-    total = parseFloat(invoice.total_amount.toString());
-  } else {
-    total = calculatedTotal;
-  }
-
-  // Build summary rows (only show applicable rows)
-  const taxRows =
-    isIndian && isTelangana
-      ? [
-          [`CGST @ ${cgstRate}%`, fmt0(cgstAmount)],
-          [`SGST @ ${sgstRate}%`, fmt0(sgstAmount)],
-        ]
-      : [
-          [`IGST @ ${igstRate}%`, fmt0(igstAmount)],   // covers inter-state (18%) & international (0%)
-        ];
-
-  const SUMMARY_ROW_COUNT = 1 /*Gross*/ + taxRows.length + 1 /*Total*/;
-
-  // Compose table body:
-  const tableBody = [
-    ...servicesBodyRows,
-
-    // First summary row: create tall empty boxes in col 1 & 2 via rowSpan
+  const metaRows = [
     [
-      { content: "", rowSpan: SUMMARY_ROW_COUNT, styles: { halign: "center", valign: "middle" } },
-      { content: "", rowSpan: SUMMARY_ROW_COUNT, styles: { halign: "center", valign: "middle" } },
-      "Gross",
-      fmt0(subtotal),
+      {
+        content: `${companyName}`,
+        styles: { fontStyle: 'bold', valign: 'top' }
+      },
+      {
+        content: `GST IN: ${companyGST}`,
+        styles: { fontStyle: 'bold', valign: 'top' }
+      }
     ],
-
-    // Tax rows (only 2 cells because col 1 & 2 are occupied by the rowSpan)
-    ...taxRows.map(([label, amt]) => [label, amt]),
-
-    // Final summary row (Total)
     [
-      { content: "Total", styles: { fontStyle: "bold", halign: "center" } },
-      { content: fmt0(total), styles: { fontStyle: "bold", halign: "center" } },
+      {
+        content: `${numberLabel} ${String(docNumber)}`,
+        styles: { fontStyle: 'bold', valign: 'top' },
+        didDrawCell: function(data) {
+          const { cell, doc } = data;
+          const labelText = numberLabel.replace(':', '');
+          const valueText = String(docNumber);
+          const labelWidth = doc.getTextWidth(labelText + ': ');
+          const cellX = cell.x;
+          const cellY = cell.y + 3;
+
+          // Draw label in bold
+          doc.setFont(doc.getFont().fontName, 'bold');
+          doc.text(labelText + ':', cellX + 2, cellY);
+
+          // Draw value in normal
+          doc.setFont(doc.getFont().fontName, 'normal');
+          doc.text(valueText, cellX + 2 + labelWidth, cellY);
+        }
+      },
+      {
+        content: `${dateLabel} ${formatDate(docDate)}`,
+        styles: { fontStyle: 'bold', valign: 'top' },
+        didDrawCell: function(data) {
+          const { cell, doc } = data;
+          const labelText = dateLabel.replace(':', '');
+          const valueText = formatDate(docDate);
+          const labelWidth = doc.getTextWidth(labelText + ': ');
+          const cellX = cell.x;
+          const cellY = cell.y + 3;
+
+          // Draw label in bold
+          doc.setFont(doc.getFont().fontName, 'bold');
+          doc.text(labelText + ':', cellX + 2, cellY);
+
+          // Draw value in normal
+          doc.setFont(doc.getFont().fontName, 'normal');
+          doc.text(valueText, cellX + 2 + labelWidth, cellY);
+        }
+      }
+    ],
+    [
+      {
+        content: `${titleLabel} ${docTitle}`,
+        styles: { fontStyle: 'bold', valign: 'top' },
+        didDrawCell: function(data) {
+          const { cell, doc } = data;
+          const labelText = titleLabel.replace(':', '');
+          const valueText = docTitle;
+          const labelWidth = doc.getTextWidth(labelText + ': ');
+          const cellX = cell.x;
+          const cellY = cell.y + 3;
+
+          // Draw label in bold
+          doc.setFont(doc.getFont().fontName, 'bold');
+          doc.text(labelText + ':', cellX + 2, cellY);
+
+          // Draw value in normal
+          doc.setFont(doc.getFont().fontName, 'normal');
+          doc.text(valueText, cellX + 2 + labelWidth, cellY);
+        }
+      },
+      {
+        content: `${totalLabel} ${fmt0(total)}`,
+        styles: { fontStyle: 'bold', valign: 'top' },
+        didDrawCell: function(data) {
+          const { cell, doc } = data;
+          const labelText = totalLabel.replace(':', '');
+          const valueText = fmt0(total);
+          const labelWidth = doc.getTextWidth(labelText + ': ');
+          const cellX = cell.x;
+          const cellY = cell.y + 3;
+
+          // Draw label in bold
+          doc.setFont(doc.getFont().fontName, 'bold');
+          doc.text(labelText + ':', cellX + 2, cellY);
+
+          // Draw value in normal
+          doc.setFont(doc.getFont().fontName, 'normal');
+          doc.text(valueText, cellX + 2 + labelWidth, cellY);
+        }
+      }
     ],
   ];
 
-  // Debug logging for table positioning
-  console.log('=== Proforma Invoice PDF Debug - Table Configuration ===');
-  console.log('Table startY:', y + 5);
-  console.log('Table column widths:', [45, 45, 45, 45]);
-  console.log('Table total width:', 45 * 4);
-  console.log('Available content width:', CONTENT_WIDTH);
-  console.log('Table left margin (should match COL1_X):', COL1_X);
+  autoTable(doc, {
+    startY: y,
+    body: metaRows,
+    theme: 'grid',
+    styles: {
+      fontSize: 8,
+      font: baseFont,
+      textColor: BLACK,
+      halign: 'left',
+      valign: 'top',
+      lineColor: GRAY,
+      lineWidth: 0.5,
+      cellPadding: { top: 3, right: 6, bottom: 3, left: 6 },
+      fillColor: false,
+    },
+    columnStyles: {
+      0: { cellWidth: FULL_W / 2, valign: 'top', halign: 'left' },
+      1: { cellWidth: FULL_W / 2, valign: 'top', halign: 'left' },
+    },
+    tableWidth: FULL_W,
+    margin: { left: M_L, right: M_R },
+  });
+
+  y = doc.lastAutoTable.finalY + 4; // Little bit spacing after meta information box
+
+  // ---- Customer Information Section
+  // 🔍 DEBUG: Customer section should match preview layout
+  console.log("🔍 Proforma Customer Section Layout:");
+  console.log("  Row 1: [Customer Name] [Customer Address - rowSpan 2]");
+  console.log("  Row 2: [Customer GST IN] [continues from row 1]");
+  
+  const customerRows = [
+    [
+      { content: `Customer Name: ${client?.client_name || 'N/A'}`, styles: { fontStyle: 'bold', valign: 'top' } },
+      { content: `Customer Address: ${client?.address || client?.client_address || 'Please update address in client profile'}`, styles: { fontStyle: 'bold', valign: 'top' }, rowSpan: 2 }
+    ],
+    [
+      { content: `Customer GST IN: ${(client?.gst_number || '').trim() || 'NA'}`, styles: { fontStyle: 'bold', valign: 'top' } }
+    ]
+  ];
+  
+  console.log("✅ Proforma customer table configured with address rowSpan=2");
 
   autoTable(doc, {
-    startY: y + 5,
-    head: [["HSN / SAC Code", "Item", "Description", "Amount (INR)"]],
+    startY: y,
+    body: customerRows,
+    theme: 'grid',
+    styles: {
+      fontSize: 8,
+      font: baseFont,
+      textColor: BLACK,
+      halign: 'left',
+      valign: 'top',
+      lineColor: GRAY,
+      lineWidth: 0.5,
+      cellPadding: { top: 2, right: 4, bottom: 2, left: 4 },
+      fillColor: false,
+    },
+    columnStyles: {
+      0: { cellWidth: FULL_W / 2, valign: 'top', halign: 'left' },
+      1: { cellWidth: FULL_W / 2, valign: 'top', halign: 'left' },
+    },
+    tableWidth: FULL_W,
+    margin: { left: M_L, right: M_R },
+  });
+
+  y = doc.lastAutoTable.finalY + 3; // Minimal spacing after customer information box
+
+  const servicesRows = buildServiceRowsNoDecimals(invoice, fmt0);
+  const taxRows = isIndian && isTelangana
+    ? [
+        ['', '', `CGST @ ${cgstRate}%`, fmt0(cgstAmount)],
+        ['', '', `SGST @ ${sgstRate}%`, fmt0(sgstAmount)],
+      ]
+    : [
+        ['', '', `IGST @ ${igstRate}%`, fmt0(igstAmount)],
+      ];
+
+  const amountInWordsRow = [
+    { content: '(Total Amount In Words)', colSpan: 3 },
+    { content: `${words} only`, styles: { halign: 'right' } },
+  ];
+
+  const tableBody = [
+    ...servicesRows,
+    ['', '', 'Gross', fmt0(subtotal)],
+    ...taxRows,
+    ['', '', 'Total', fmt0(total)],
+    amountInWordsRow,
+  ];
+
+  autoTable(doc, {
+    startY: y,
+    head: [['HSN / SAC Code', 'Item', 'Description', 'Amount (INR)']],
     body: tableBody,
-    theme: "grid",
+    theme: 'grid',
     headStyles: {
       fillColor: false,
       textColor: BLACK,
-      fontStyle: "bold",
-      halign: "center",
+      fontStyle: 'bold',
+      halign: 'center',
       lineColor: GRAY,
-      lineWidth: 0.3,
-      font: "helvetica",
-    },
-    styles: {
-      fontSize: 10,  // Standard for A4
-      font: "helvetica",
-      textColor: BLACK,
-      halign: "center",
-      valign: "middle",
-      lineColor: GRAY,
-      lineWidth: 0.3,  // Standard for A4
-      cellPadding: 3,   // Standard padding for A4
-    },
-    bodyStyles: { textColor: BLACK },
-    columnStyles: {
-      0: { cellWidth: 45, halign: "center" }, // HSN - standard for A4
-      1: { cellWidth: 45, halign: "center" }, // Item - standard for A4
-      2: { cellWidth: 45, halign: "center" }, // Description - standard for A4
-      3: { cellWidth: 45, halign: "center" }, // Amount - standard for A4
-    }
-  });
-
-  // Debug logging after table creation
-  console.log('Table finalY after creation:', doc.lastAutoTable.finalY);
-
-  // ---------- Amount in words ----------
-  // Ensure we have exactly 2 decimal places for precise calculation
-  const preciseTotal = Math.round(total * 100) / 100;
-  const rupeesPart = Math.floor(preciseTotal);
-  const paisePart = Math.round((preciseTotal - rupeesPart) * 100);
-
-  let amountWords = convertNumberToWords(rupeesPart);
-
-  if (paisePart > 0) {
-    const paiseWords = convertNumberToWords(paisePart);
-    amountWords += ` and ${paiseWords} Paise`;
-  }
-
-  autoTable(doc, {
-    startY: doc.lastAutoTable.finalY + 2,
-    body: [
-      [
-        { content: "(Total Amount In Words)", styles: { fontStyle: "bold", halign: "left", valign: "middle", font: "helvetica" } },
-        { content: `Rupees ${amountWords} only`,      styles: { halign: "left", valign: "middle", font: "helvetica" } }
-      ]
-    ],
-    theme: "grid",
-    styles: {
-      fontSize: 10,  // Standard for A4
-      font: "helvetica",
-      textColor: BLACK,
-      lineColor: GRAY,
-      lineWidth: 0.3,  // Standard for A4
-      cellPadding: 3,   // Standard padding for A4
+      lineWidth: 0.5,
+      font: baseFont,
+      fontSize: 8,
     },
     columnStyles: {
-      0: { cellWidth: COL_W, halign: "left" },
-      1: { cellWidth: COL_W, halign: "left" }
-    }
-  });
-
-  // ---------- Bank details ----------
-  doc.setFontSize(14);  // Standard for A4
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(...BRAND);
-  doc.text("Bank Details", MARGIN_L, doc.lastAutoTable.finalY + 10);
-
-  autoTable(doc, {
-    startY: doc.lastAutoTable.finalY + 12,
-    body: [
-      ["Bank Name",        "Yes Bank"],
-      ["Beneficiary Name", companyName],
-      ["Account Number",   "000663300001713"],
-      ["Account Type",     "Current Account"],
-      ["IFSC Code",        "YESB0000006"],
-      ["Bank Branch",      "Somajiguda"],
-      ["City",             "Hyderabad"]
-    ],
-    theme: "grid",
-    styles: {
-      fontSize: 10,  // Standard for A4
-      font: "helvetica",
-      textColor: BLACK,
-      lineColor: GRAY,
-      lineWidth: 0.3,  // Standard for A4
-      halign: "center",
-      valign: "middle",
-      cellPadding: 2,  // Standard padding for A4
+      0: { cellWidth: 29, halign: 'center', valign: 'top' },
+      1: { cellWidth: 44, halign: 'left', valign: 'top' },
+      2: { cellWidth: 63, halign: 'center', valign: 'top' },
+      3: { cellWidth: 44, halign: 'center', valign: 'top' }, // Center align Amount (INR) column
     },
-    columnStyles: {
-      0: { fontStyle: "bold", cellWidth: COL_W, halign: "left" },
-      1: { cellWidth: COL_W, halign: "left" }
-    }
+    styles: {
+      fontSize: 8,
+      font: baseFont,
+      textColor: BLACK,
+      halign: 'left',
+      valign: 'top',
+      lineColor: GRAY,
+      lineWidth: 0.5,
+      cellPadding: { top: 3, right: 6, bottom: 3, left: 6 }, // Match preview padding
+      fillColor: false,
+    },
+    tableWidth: FULL_W,
+    margin: { left: M_L, right: M_R },
   });
 
-  // ---------- Note + signature + footer ----------
-  const sigBlockY = doc.lastAutoTable.finalY + 12;
-  const sigBlockX = MARGIN_L + 20;  // Position signature relative to left margin
-  const sigImgWidth = 28;
-  const sigImgHeight = 14;
+  // Single page layout - no page breaks
+  let cursorY = doc.lastAutoTable.finalY + 4; // Little bit spacing after services table
 
-  if (signatureBase64) {
-    doc.addImage(signatureBase64, "PNG", sigBlockX, sigBlockY, sigImgWidth, sigImgHeight);
-  }
-
-  const pageHeight = doc.internal.pageSize.height;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);  // Standard for A4
+  // ---- Payment Note
+  doc.setFont(baseFont, 'normal');
+  doc.setFontSize(8);
   doc.setTextColor(...BLACK);
-  doc.text("NOTE:", MARGIN_L, pageHeight - 10);
+  doc.text('NOTE: No files will be delivered until the final payment is made.', M_L, cursorY);
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(12);  // Standard for A4
-  doc.text("No files will be delivered until the final payment is made.", MARGIN_L + 16, pageHeight - 10);
+  cursorY += 8; // Reduced spacing for single page
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(12);  // Standard for A4
-  doc.text(
-    "Authorised signature for Walls & Trends",
-    sigBlockX + sigImgWidth / 2,
-    sigBlockY + sigImgHeight + 8,
-    { align: "center" }
-  );
+  // ---- Signature & Footer - matching tax invoice exactly
+  const signatureBase64 = await loadImageToDataURL(signaturePath);
+  if (signatureBase64) {
+    console.log('Signature loaded successfully, adding to PDF...');
+    // Position signature image slightly left of center (matching tax invoice)
+    const signatureX = M_L + 15; // Less centered, matching tax invoice
+    console.log('Adding signature at position:', { x: signatureX, y: cursorY, width: 30, height: 15 });
+    doc.addImage(signatureBase64, undefined, signatureX, cursorY, 30, 15); // undefined = auto-detect format
+  } else {
+    console.warn('Signature could not be loaded, continuing without signature');
+  }
 
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const rightX = pageWidth - MARGIN_L;  // Use same margin as left side
-  doc.setFont("helvetica", "italic");
-  doc.setFontSize(11);  // Standard for A4
-  doc.setTextColor(...BLUE);
-  doc.text("Authenticity Promised. Creativity Published.", rightX, sigBlockY + sigImgHeight + 20, { align: "right" });
-  doc.text("Thank you for your business!",                  rightX, sigBlockY + sigImgHeight + 26, { align: "right" });
+  // Authorised Signature text below signature - left-aligned with image (matching tax invoice)
+  console.log('Adding signature text at position:', { x: M_L + 15, y: cursorY + 25 });
+  doc.setFont(baseFont, 'normal');
+  doc.setFontSize(6); // Smaller font size matching tax invoice
+  doc.setTextColor(153, 164, 175); // Gray color matching tax invoice
+  doc.text('Authorised Signature for Walls & Trends', M_L + 15, cursorY + 25, { align: 'left' });
 
-  // Return the document instead of saving it directly
+  // Footer text on the right side - with more spacing (matching tax invoice)
+  const footerX = PAGE_W - M_R - 5; // Closer to right edge, matching tax invoice
+  console.log('Adding footer text at positions:', {
+    line1: { x: footerX, y: cursorY + 10 },
+    line2: { x: footerX, y: cursorY + 22 } // More spacing between lines, matching tax invoice
+  });
+  doc.setFont(baseFont, 'italic');
+  doc.setTextColor(...BRAND);
+  doc.setFontSize(9);
+  doc.text('Authenticity Promised. Creativity Published.', footerX, cursorY + 10, { align: 'right' });
+  doc.text('Thank you for your business!', footerX, cursorY + 22, { align: 'right' }); // More spacing, matching tax invoice
+
   return doc;
 }
 
-/* ===== Utilities ===== */
+export async function generateTaxInvoicePDF(invoice, client) {
+  // For now, use the same function as proforma but with tax invoice heading
+  const taxInvoice = {
+    ...invoice,
+    pdf_heading: 'Tax Invoice'
+  };
+  return await generateProformaInvoicePDF(taxInvoice, client);
+}
+
+export async function testProformaPDFFixes() {
+    const testInvoice = {
+      proforma_type: 'WT',
+      proforma_id: 'WT2509PRF034',
+      proforma_date: new Date('2025-09-25').toISOString(),
+      proforma_title: 'Quotation for Nenu Ready',
+      services: [
+        { name: 'Teaser, Trailer', description: 'Teaser + Trailer + Show Reel = 3.5L', amount: 350000 },
+        { name: 'Lyrical Videos', description: 'Lyrical Videos Total 4 - Standard - 50k each', amount: 200000 },
+      ],
+      subtotal: 550000,
+      cgst: 0,
+      sgst: 0,
+      igst: 99000,
+      total_amount: 649000,
+    };
+
+    const testClient = {
+      client_name: 'Harniks India LLP',
+      address: '29-36-38, Muesuem road, Governorpet, Vijayawada, Andhra Pradesh',
+      gst_number: '37AAJH7994P1Z7',
+      country: 'india',
+      state: 'andhra pradesh',
+    };
+
+    return await generateProformaInvoicePDF(testInvoice, testClient);
+  }
+
+export async function testWTXLogoDetection() {
+    console.log('🧪 Testing WTX logo detection...');
+
+    // Test WT detection
+    const wtInvoice = {
+      proforma_type: 'WT',
+      proforma_id: 'WT2509PRF001',
+    };
+
+    // Test WTX detection
+    const wtxInvoice = {
+      proforma_type: 'WTX',
+      proforma_id: 'WTX2509PRF001',
+    };
+
+    console.log('Testing WT invoice:');
+    const wtDoc = new jsPDF('p', 'mm', 'a4');
+    const wtType = (wtInvoice?.proforma_type || "").toString().toUpperCase().trim();
+    const wtIsWT = wtType === 'WT' || wtType === 'WTPL' || wtType.includes('WT');
+    const wtIsWTX = wtType === 'WTX' || wtType === 'WTXPL' || wtType.includes('WTX');
+    console.log(`  WT: isWT=${wtIsWT}, isWTX=${wtIsWTX}, logo=${wtIsWTX ? 'WTX' : 'WT'}`);
+
+    console.log('Testing WTX invoice:');
+    const wtxType = (wtxInvoice?.proforma_type || "").toString().toUpperCase().trim();
+    const wtxIsWT = wtxType === 'WT' || wtxType === 'WTPL' || wtxType.includes('WT');
+    const wtxIsWTX = wtxType === 'WTX' || wtxType === 'WTXPL' || wtxType.includes('WTX');
+    console.log(`  WTX: isWT=${wtxIsWT}, isWTX=${wtxIsWTX}, logo=${wtxIsWTX ? 'WTX' : 'WT'}`);
+
+    return { wt: wtIsWTX ? 'WTX' : 'WT', wtx: wtxIsWTX ? 'WTX' : 'WT' };
+  }
 
 function convertNumberToWords(num) {
-  const a = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
-  const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
-  if (num === 0) return "Zero";
+  const a = [
+    '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+    'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
+    'Seventeen', 'Eighteen', 'Nineteen'
+  ];
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  if (num === 0) return 'Zero';
   const inWords = (n) => {
     if (n < 20) return a[n];
-    if (n < 100) return b[Math.floor(n / 10)] + (n % 10 ? " " + a[n % 10] : "");
-    if (n < 1000) return a[Math.floor(n / 100)] + " Hundred" + (n % 100 ? " and " + inWords(n % 100) : "");
-    if (n < 100000) return inWords(Math.floor(n / 1000)) + " Thousand" + (n % 1000 ? " " + inWords(n % 1000) : "");
-    if (n < 10000000) return inWords(Math.floor(n / 100000)) + " Lakh" + (n % 100000 ? " " + inWords(n % 100000) : "");
-    return inWords(Math.floor(n / 10000000)) + " Crore" + (n % 10000000 ? " " + inWords(n % 10000000) : "");
+    if (n < 100) return b[Math.floor(n / 10)] + (n % 10 ? ' ' + a[n % 10] : '');
+    if (n < 1000) return a[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' and ' + inWords(n % 100) : '');
+    if (n < 100000) return inWords(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 ? ' ' + inWords(n % 1000) : '');
+    if (n < 10000000) return inWords(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 ? ' ' + inWords(n % 100000) : '');
+    return inWords(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 ? ' ' + inWords(n % 10000000) : '');
   };
   return inWords(num);
 }
 
 function formatDate(dateObj) {
-  const date = new Date(dateObj);
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = date.toLocaleString("en-us", { month: "long" });
-  const yyyy = date.getFullYear();
+  const d = new Date(dateObj);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = d.toLocaleString('en-us', { month: 'long' });
+  const yyyy = d.getFullYear();
   return `${dd} ${mm} ${yyyy}`;
 }
 
 function deriveTitleFromServices(invoice) {
   const arr = Array.isArray(invoice?.services) ? invoice.services : [];
   const first = arr[0]?.name;
-  if (Array.isArray(first)) return first.filter(Boolean).join(", ");
-  return first || "";
+  if (Array.isArray(first)) return first.filter(Boolean).join(', ');
+  return first || '';
 }
 
 function buildServiceRowsNoDecimals(invoice, fmt0) {
   const arr = Array.isArray(invoice?.services) ? invoice.services : [];
   if (arr.length) {
     return arr.map((s, i) => {
-      const nm = Array.isArray(s?.name) ? s.name.filter(Boolean).join(", ") : (s?.name || `Service ${i + 1}`);
-      const desc = String(s?.description || "");
+      const nm = Array.isArray(s?.name) ? s.name.filter(Boolean).join(', ') : (s?.name || `Service ${i + 1}`);
+      const desc = String(s?.description || '');
       const amt = Number(s?.amount || 0);
-      return ["9983", String(nm), desc, fmt0(amt)];
+      return ['9983', String(nm), desc, fmt0(amt)];
     });
   }
-  const nm = String(invoice?.service_name || invoice?.invoice_title || "Service");
-  const desc = String(invoice?.service_description || "");
+  const nm = String(invoice?.service_name || invoice?.proforma_title || invoice?.quotation_title || invoice?.invoice_title || 'Service');
+  const desc = String(invoice?.service_description || '');
   const amt = Number(invoice?.subtotal || 0);
-  return [["9983", nm, desc, fmt0(amt)]];
+  return [['9983', nm, desc, fmt0(amt)]];
 }
 
 function calcSubtotalFromServices(invoice) {
@@ -499,3 +777,8 @@ function calcSubtotalFromServices(invoice) {
   if (!arr.length) return Number(invoice?.subtotal || 0) || 0;
   return arr.reduce((sum, s) => sum + (Number(s?.amount || 0)), 0);
 }
+
+function roundToTwo(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+

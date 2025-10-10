@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Walls And Trends Proforma Invoice</title>
+    <script type="module">
+        import { testProformaPDFFixes } from './src/utils/generateProformaInvoicePDF.js';
+
+        async function generateTestPDF() {
+            try {
+                console.log('Starting PDF generation test...');
+                const doc = await testProformaPDFFixes();
+                console.log('PDF generated successfully!');
+                doc.save('WT2509PRF034_Proforma_Invoice.pdf');
+                console.log('PDF saved as WT2509PRF034_Proforma_Invoice.pdf');
+            } catch (error) {
+                console.error('Error generating PDF:', error);
+            }
+        }
+
+        // Make the function available globally
+        window.generateTestPDF = generateTestPDF;
+    </script>
+</head>
+<body>
+    <h1>Walls And Trends Proforma Invoice Test</h1>
+    <p>Click the button below to generate the test PDF with the specified invoice data.</p>
+    <button onclick="generateTestPDF()" style="padding: 10px 20px; font-size: 16px; background: #3b5999; color: white; border: none; border-radius: 5px; cursor: pointer;">
+        Generate Test PDF
+    </button>
+    <div style="margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 5px;">
+        <h3>Invoice Details:</h3>
+        <ul>
+            <li><strong>Company:</strong> Walls And Trends</li>
+            <li><strong>Proforma Number:</strong> WT2509PRF034</li>
+            <li><strong>Title:</strong> Quotation for Nenu Ready</li>
+            <li><strong>Customer:</strong> Harniks India LLP</li>
+            <li><strong>Customer GST:</strong> 37AAJH7994P1Z7</li>
+            <li><strong>Services:</strong> Teaser/Trailer (₹3,50,000) + Lyrical Videos (₹2,00,000)</li>
+            <li><strong>Gross Amount:</strong> ₹5,50,000.00</li>
+            <li><strong>IGST (18%):</strong> ₹99,000.00</li>
+            <li><strong>Total Amount:</strong> ₹6,49,000.00</li>
+        </ul>
+    </div>
+</body>
+</html>

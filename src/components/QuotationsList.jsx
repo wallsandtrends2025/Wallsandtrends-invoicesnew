@@ -1,5 +1,5 @@
 // src/pages/ProformaList.jsx
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   collection,
   getDocs,
@@ -30,17 +30,51 @@ export default function ProformaList() {
   const [cursors, setCursors] = useState([]); // first doc of each page (index = page-1)
   const [firstDoc, setFirstDoc] = useState(null);
   const [lastDoc, setLastDoc] = useState(null);
-  const [hasNext, setHasNext] = useState(false);
-  const [hasPrev, setHasPrev] = useState(false);
 
   const navigate = useNavigate();
+
+  // three-dots popup state (same as other pages)
+  const [openMenuForId, setOpenMenuForId] = useState(null);
 
   // order
   const ORDER_FIELD = "created_at";
   const ORDER_DIR = "desc";
   const baseColRef = collection(db, "quotations");
 
-  // ---- count total once (or when collection logic changes) ----
+  // ---- helpers to match AllInvoices rendering ----
+  const getServiceNames = (services) => {
+    if (!Array.isArray(services)) return "—";
+    const names = services
+      .flatMap((s) => {
+        const n = s?.name;
+        if (Array.isArray(n)) return n;
+        if (typeof n === "string") return n.split(",").map((t) => t.trim());
+        return [];
+      })
+      .filter(Boolean);
+    return names.length ? names.join(", ") : "—";
+  };
+
+  const formatINR = (n) =>
+    `₹${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+
+  const rawStatus = (p) =>
+    (p.status ??
+      p.payment_status ??
+      p.proforma_status ??
+      p.quotation_status ??
+      "").toString();
+
+  const formatStatus = (statusLike) => {
+    const lower = (statusLike || "").toLowerCase();
+    const base = "px-2 py-1 rounded-full text-xs font-semibold";
+    if (lower === "paid") return <span className={`${base} bg-green-100 text-green-800`}>Paid</span>;
+    if (lower === "pending") return <span className={`${base} bg-red-100 text-red-800`}>Pending</span>;
+    if (lower === "partial") return <span className={`${base} bg-yellow-100 text-yellow-800`}>Partial</span>;
+    return <span className={`${base} bg-gray-100 text-gray-800`}>—</span>;
+  };
+
+  // ---- count total once ----
   useEffect(() => {
     (async () => {
       try {
@@ -79,7 +113,6 @@ export default function ProformaList() {
             limitToLast(pageSize)
           );
         } else if (direction === "jump" && jumpDoc) {
-          // start directly at the stored first doc of that page
           qy = query(
             baseColRef,
             orderBy(ORDER_FIELD, ORDER_DIR),
@@ -121,18 +154,6 @@ export default function ProformaList() {
           });
           setPage(pg);
         }
-
-        // peek next
-        if (last) {
-          const peek = await getDocs(
-            query(baseColRef, orderBy(ORDER_FIELD, ORDER_DIR), startAfter(last), fbLimit(1))
-          );
-          setHasNext(!peek.empty);
-        } else {
-          setHasNext(false);
-        }
-
-        setHasPrev((direction === "prev" ? page - 1 : page) > 1 || (targetPage ?? page) > 1);
       } catch (err) {
         console.error("Error fetching page:", err);
       } finally {
@@ -145,14 +166,14 @@ export default function ProformaList() {
   // first load and when pageSize changes
   useEffect(() => {
     runPageQuery({ direction: "first" });
-  }, [pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageSize]);
 
   // ---- goToPage for numbered pills ----
   const goToPage = async (target) => {
     if (loading) return;
     if (target < 1 || target > totalPages || target === page) return;
 
-    // quick jump if we already have its cursor
     const jumpCursor = cursors[target - 1];
     if (target === 1) {
       await runPageQuery({ direction: "first" });
@@ -163,7 +184,7 @@ export default function ProformaList() {
       return;
     }
 
-    // otherwise, advance forward until we build cursors up to that page
+    // otherwise, step forward building cursors
     setLoading(true);
     try {
       let currentLast = lastDoc;
@@ -187,11 +208,6 @@ export default function ProformaList() {
           setLastDoc(last);
           setCursors(nextCursors);
           setPage(target);
-          const peek = await getDocs(
-            query(baseColRef, orderBy(ORDER_FIELD, ORDER_DIR), startAfter(last), fbLimit(1))
-          );
-          setHasNext(!peek.empty);
-          setHasPrev(target > 1);
           return;
         }
       }
@@ -202,13 +218,12 @@ export default function ProformaList() {
     }
   };
 
-  // ---- delete (refreshes current page) ----
+  // ---- delete (refresh current page) ----
   const handleDelete = async (id) => {
     if (!window.confirm("Are you sure you want to delete this proforma/quotation?")) return;
     try {
       await deleteDoc(doc(db, "quotations", id));
       setTotalCount((c) => Math.max(0, c - 1));
-      // reload current page (keep position if we have its cursor)
       const currentCursor = cursors[page - 1];
       if (page === 1 || !currentCursor) {
         await runPageQuery({ direction: "first" });
@@ -221,7 +236,20 @@ export default function ProformaList() {
     }
   };
 
-  // ---- UI bits (same look as other pages) ----
+
+  // --- close popup on ESC / scroll
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && setOpenMenuForId(null);
+    const onScroll = () => setOpenMenuForId(null);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, []);
+
+  // ---------- UI bits (same look as other pages) ----------
   const getVisiblePages = (current, total) => {
     const max = 7;
     if (total <= max) return [...Array(total)].map((_, i) => i + 1);
@@ -244,10 +272,10 @@ export default function ProformaList() {
       onClick={onClick}
       disabled={disabled}
       className={[
-        "w-9 h-9 rounded-full border flex items-center justify-center text-sm",
+        "w-9 h-9 rounded-full border flex items-center justify-center text-sm transition-colors",
         active
-          ? "bg-blue-500 text-white border-blue-500"
-          : "bg-white text-gray-600 border-gray-300 hover:bg-gray-100",
+          ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+          : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100",
         disabled ? "opacity-50 cursor-not-allowed hover:bg-white" : "cursor-pointer",
       ].join(" ")}
     >
@@ -256,6 +284,7 @@ export default function ProformaList() {
   );
 
   const PaginationBar = () => {
+    if (totalPages <= 1) return null;
     const visible = getVisiblePages(page, totalPages);
     return (
       <div className="flex items-center gap-2">
@@ -287,17 +316,16 @@ export default function ProformaList() {
     return (
       <div className="flex flex-col items-end gap-2 ml-auto">
         <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-700">Items per page:</label>
+          <label className="text-sm text-gray-600">Items per page:</label>
           <select
             value={pageSize}
             onChange={async (e) => {
               setPageSize(Number(e.target.value));
-              // reset to first page with new page size
               await runPageQuery({ direction: "first" });
             }}
-            className="border p-1 rounded"
+            className="border border-gray-300 text-gray-700 bg-white rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            {[5, 10, 20, 50].map((n) => (
+            {[10, 25, 50, 100].map((n) => (
               <option key={n} value={n}>
                 {n}
               </option>
@@ -305,7 +333,7 @@ export default function ProformaList() {
           </select>
         </div>
 
-        <span className="text-sm text-gray-700">
+        <span className="text-sm text-gray-600">
           Showing <strong>{shownFrom || 0}</strong>–<strong>{shownTo || 0}</strong> of{" "}
           <strong>{totalCount}</strong>
         </span>
@@ -313,96 +341,237 @@ export default function ProformaList() {
     );
   };
 
+  // helper to format services
+  const renderServices = (services) => getServiceNames(services);
+
   return (
-    <div className="min-h-screen bg-gray-100 px-6 py-10 font-inter">
-      <h2 className="text-3xl font-bold mb-6 text-black">All Proformas</h2>
+    <div className="p-[30px] bg-[#f5f7fb] min-h-screen">
+      {/* Title bar */}
+      <div className="mb-4 bg-[#ffffff] p-[10px] border-curve">
+        <h2 className="text-xl font-semibold text-gray-800 m-[0]">All Proformas</h2>
+      </div>
 
       {/* Top-right items-per-page & count */}
       <div className="flex justify-end mb-4">
         <TopRightControls />
       </div>
 
-      <div className="rounded-xl shadow-lg overflow-hidden">
-        <table className="table-auto w-full text-sm bg-black text-white">
-          <thead className="bg-gray-900 text-white sticky top-0 z-10">
-            <tr>
-              <th className="px-6 py-3 border border-gray-700 text-left">Proforma ID</th>
-              <th className="px-6 py-3 border border-gray-700 text-left">Client</th>
-              <th className="px-6 py-3 border border-gray-700 text-left">Title</th>
-              <th className="px-6 py-3 border border-gray-700 text-left">Services</th>
-              <th className="px-6 py-3 border border-gray-700 text-center">Amount</th>
-              <th className="px-6 py-3 border border-gray-700 text-center">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan="6" className="text-center py-10 text-gray-300">
-                  Loading…
-                </td>
+      {/* Card with table — same look as AllInvoices */}
+      <div className="bg-[#ffffff] p-[30px] border-curve rounded-xl shadow overflow-hidden mt-[20px]">
+        <div className="relative overflow-x-auto table-height overflow-y-auto border border-[#AAAAAA] rounded-lg border-curve">
+          <table className="min-w-full border-collapse text-sm text-gray-700 border-curve">
+            <thead className="bg-[#F1F1F1] text-gray-700 sticky top-0 z-10">
+              <tr className="divide-x divide-[#AAAAAA] text-[#808080]">
+                {[
+                  "Proforma ID",
+                  "Client ID",
+                  "Title",
+                  "Service(s)",
+                  "Amount",
+                  "Status",
+                  "Actions",
+                ].map((h) => (
+                  <th key={h} className="px-6 py-4 font-semibold text-sm text-center p-[10px]">
+                    {h}
+                  </th>
+                ))}
               </tr>
-            ) : proformas.length === 0 ? (
-              <tr>
-                <td colSpan="6" className="text-center py-10 text-gray-300">
-                  No proformas found.
-                </td>
-              </tr>
-            ) : (
-              proformas.map((p, index) => (
-                <tr
-                  key={p.id}
-                  className={`transition ${index % 2 === 0 ? "bg-gray-950" : "bg-black"} hover:bg-gray-800`}
-                >
-                  <td className="px-6 py-3 border border-gray-800">
-                    {p.proforma_id || p.quotation_id}
-                  </td>
-                  <td className="px-6 py-3 border border-gray-800">
-                    {p.client_name || p.client_id}
-                  </td>
-                  <td className="px-6 py-3 border border-gray-800">
-                    {p.proforma_title || p.quotation_title}
-                  </td>
-                  <td className="px-6 py-3 border border-gray-800">
-                    {Array.isArray(p.services) ? p.services.map((s) => s.name).join(" + ") : "—"}
-                  </td>
-                  <td className="px-6 py-3 border border-gray-800 text-center">
-                    ₹{Number(p.total_amount || p.amount || 0).toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </td>
-                  <td className="px-6 py-3 border border-gray-800">
-                    <div className="flex flex-col items-center gap-y-2">
-                      <button
-                        onClick={() => navigate(`/dashboard/edit-quotation/${p.id}`)}
-                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-1 rounded text-xs edit"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(p.id)}
-                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-1 rounded text-xs edit"
-                      >
-                        Delete
-                      </button>
-                      <button
-                        onClick={() =>
-                          navigate(`/dashboard/quotation/${p.proforma_id || p.quotation_id}`)
-                        }
-                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-1 rounded text-xs edit"
-                      >
-                        Preview
-                      </button>
-                    </div>
+            </thead>
+
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-10 text-center text-gray-500 p-[10px]">
+                    Loading...
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : proformas.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-10 text-center text-gray-500">
+                    No proformas found.
+                  </td>
+                </tr>
+              ) : (
+                proformas.map((p, idx) => {
+                  const amount = p.total_amount ?? p.amount;
+                  const statusNode = formatStatus(rawStatus(p));
 
-        {/* Bottom-right round pager */}
-        <div className="flex justify-end bg-gray-900 px-4 py-4 border-t border-gray-800">
-          <PaginationBar />
+                  return (
+                    <tr
+                      key={p.id}
+                      className={`transition-colors divide-x divide-[#AAAAAA] ${
+                        idx % 2 === 0 ? "bg-white" : "bg-[#F9F9F9]"
+                      } hover:bg-gray-50`}
+                    >
+                      <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap text-center p-[10px]">
+                        {p.proforma_id || p.quotation_id || p.id}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap text-center p-[10px]">
+                        {p.client_id || "—"}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-800 text-center p-[10px]">
+                        {p.proforma_title || p.quotation_title || "—"}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-800 p-[10px]">
+                        {renderServices(p.services)}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap text-right p-[10px]">
+                        {formatINR(amount)}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap text-center p-[10px]">
+                        {statusNode}
+                      </td>
+
+                      {/* Actions with 3-dots + bubble */}
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        <div className="relative inline-block">
+                          <DotsMenu
+                            isOpen={openMenuForId === p.id}
+                            onToggle={() =>
+                              setOpenMenuForId((prev) => (prev === p.id ? null : p.id))
+                            }
+                            renderBubble={(anchorRef) =>
+                              openMenuForId === p.id ? (
+                                <RowActionsBubble
+                                  anchorRef={anchorRef}
+                                  onClose={() => setOpenMenuForId(null)}
+                                  onEdit={() => {
+                                    setOpenMenuForId(null);
+                                    navigate(`/dashboard/edit-quotation/${p.id}`);
+                                  }}
+                                  onDelete={async () => {
+                                    setOpenMenuForId(null);
+                                    await handleDelete(p.id);
+                                  }}
+                                  onPreview={() => {
+                                    console.log("🔍 DEBUG: Preview clicked for proforma:", {
+                                      documentId: p.id,
+                                      proforma_id: p.proforma_id,
+                                      quotation_id: p.quotation_id,
+                                      finalId: p.proforma_id || p.quotation_id || p.id,
+                                      client_id: p.client_id
+                                    });
+                                    setOpenMenuForId(null);
+                                    navigate(`/dashboard/quotation/${p.proforma_id || p.quotation_id || p.id}`);
+                                  }}
+                                />
+                              ) : null
+                            }
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Bottom-right round pager */}
+      <div className="flex justify-end mt-6">
+        <PaginationBar />
+      </div>
+    </div>
+  );
+}
+
+/* -------------------- Helpers: Dots trigger & Bubble (shared style) -------------------- */
+
+function DotsMenu({ isOpen, onToggle, renderBubble }) {
+  const btnRef = useRef(null);
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={onToggle}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        className="inline-flex items-center justify-center w-9 h-9 rounded-full border-[0] bg-[#ffffff] text-gray-600 hover:bg-gray-100 transition cursor-pointer"
+        title="Actions"
+      >
+        {/* vertical three dots */}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="12" cy="5" r="2" />
+          <circle cx="12" cy="12" r="2" />
+          <circle cx="12" cy="19" r="2" />
+        </svg>
+      </button>
+
+      {isOpen && renderBubble(btnRef)}
+    </>
+  );
+}
+
+function RowActionsBubble({ onEdit, onDelete, onPreview, anchorRef, onClose }) {
+  const bubbleRef = useRef(null);
+
+  // DEBUG: Log available actions
+  console.log("🔍 DEBUG: RowActionsBubble rendered with actions: Edit, Delete, Preview.");
+
+  useEffect(() => {
+    const onClick = (e) => {
+      if (!bubbleRef.current) return;
+      if (
+        !bubbleRef.current.contains(e.target) &&
+        !anchorRef.current?.contains(e.target)
+      ) {
+        onClose?.();
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [anchorRef, onClose]);
+
+  // Compute position relative to the anchor
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  useEffect(() => {
+    const rect = anchorRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const GAP_Y = 56; // how far above the dots
+    const BUBBLE_W = 360; // back to original width for 3 buttons
+    const top = rect.top + window.scrollY - GAP_Y;
+    const left = Math.max(
+      12,
+      rect.left + window.scrollX - (BUBBLE_W - rect.width) + 8
+    );
+    setPos({ top, left });
+  }, [anchorRef]);
+
+  return (
+    <div
+      ref={bubbleRef}
+      style={{
+        position: "fixed",
+        top: pos.top - window.scrollY,
+        left: pos.left - window.scrollX,
+        width: 360,
+        zIndex: 50,
+      }}
+    >
+      <div className="relative">
+        {/* Bubble */}
+        <div className="rounded-full shadow-lg px-4 py-3 flex items-center gap-5 editpopup">
+          <button
+            onClick={onEdit}
+            className="px-4 py-1.5 bg-[#ffffff] text-[#2E53A3] rounded-md text-sm font-medium hover:bg-gray-100 transition m-[5px] border-curve p-[5px] border-0 cursor-pointer"
+          >
+            Edit
+          </button>
+          <button
+            onClick={onDelete}
+            className="px-4 py-1.5 bg-[#ffffff] text-[#2E53A3] rounded-md text-sm font-medium hover:bg-gray-100 transition m-[5px] border-curve p-[5px] border-0 cursor-pointer"
+          >
+            Delete
+          </button>
+          <button
+            onClick={onPreview}
+            className="px-4 py-1.5 bg-[#ffffff] text-[#2E53A3] rounded-md text-sm font-medium hover:bg-gray-100 transition m-[5px] border-curve p-[5px] border-0 cursor-pointer"
+          >
+            Preview
+          </button>
         </div>
       </div>
     </div>

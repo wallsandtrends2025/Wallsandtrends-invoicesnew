@@ -13,8 +13,7 @@ import {
   limit,
 } from "firebase/firestore";
 import { downloadChunkedPDF } from "../utils/pdfChunkedStorage";
-import { generateInvoicePDF } from "../utils/generateInvoicePDF";
-import { generateProformaInvoicePDF } from "../utils/generateProformaInvoicePDF";
+// PDF generators removed - regeneration functionality removed
 
 /* ---------------- helpers ---------------- */
 const normalizeCompanyBucket = (val = "") => {
@@ -84,24 +83,6 @@ async function getPresignedUrl(s3Key) {
   return json.url;
 }
 
-// fetch invoice + client by invoice_id
-async function fetchInvoiceAndClientByInvoiceId(invoiceId) {
-  const qInv = query(
-    collection(db, "invoices"),
-    where("invoice_id", "==", invoiceId),
-    limit(1)
-  );
-  const invSnap = await getDocs(qInv);
-  if (invSnap.empty) throw new Error("Invoice not found for " + invoiceId);
-  const invDoc = invSnap.docs[0];
-  const invoice = invDoc.data();
-  const clientId = invoice?.client_id;
-  if (!clientId) throw new Error("Missing client_id on invoice " + invoiceId);
-  const clientSnap = await getDoc(doc(db, "clients", clientId));
-  if (!clientSnap.exists()) throw new Error("Client not found for " + clientId);
-  const client = clientSnap.data();
-  return { invoice, client, invoiceDocId: invDoc.id, clientId };
-}
 
 /* ---------------- main component ---------------- */
 export default function PDFManager() {
@@ -466,7 +447,18 @@ export default function PDFManager() {
 
       const type = String(pdf?.type || "").toLowerCase();
 
-      // 1) Prefer downloading via chunked storage if we have an ID
+      // 0) Preferred path: open InvoicePreview with autoDownload to capture exact DOM layout
+      if (pdf?.invoiceDocId) {
+        const url = `/dashboard/invoice-preview/${encodeURIComponent(pdf.invoiceDocId)}?autoDownload=${type === 'proforma' ? 'proforma' : 'tax'}&close=1`;
+        window.open(url, "_blank", "noopener,noreferrer");
+        return;
+      } else if (pdf?.invoiceId) {
+        const url = `/dashboard/invoice-preview/${encodeURIComponent(pdf.invoiceId)}?by=invoice_id&autoDownload=${type === 'proforma' ? 'proforma' : 'tax'}&close=1`;
+        window.open(url, "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      // 1) If we have chunked storage id
       if (pdf?.pdfId) {
         await downloadChunkedPDF(pdf.pdfId);
         return;
@@ -476,37 +468,26 @@ export default function PDFManager() {
         return;
       }
 
-      // 2) If we can reconstruct from invoice, do that
+      // 2) If reconstructing from invoice (rare path now)
       if (pdf?.invoiceId) {
         const { invoice, client } = await fetchInvoiceAndClientByInvoiceId(pdf.invoiceId);
-
         if (type === "tax") {
           const docPDF = await generateInvoicePDF(invoice, client);
-          if (docPDF?.save) {
-            docPDF.save(`${invoice.invoice_id}.pdf`);
-            return;
-          }
-          throw new Error("Tax PDF generation failed");
-        }
-
-        if (type === "proforma") {
+          if (docPDF?.save) { docPDF.save(`${invoice.invoice_id}.pdf`); return; }
+        } else if (type === "proforma") {
           const docPDF = await generateProformaInvoicePDF(invoice, client);
-          if (docPDF?.save) {
-            docPDF.save(`${invoice.invoice_id}_PROFORMA.pdf`);
-            return;
-          }
-          throw new Error("Proforma PDF generation failed");
+          if (docPDF?.save) { docPDF.save(`${invoice.invoice_id}_PROFORMA.pdf`); return; }
         }
       }
 
-      // 3) Use S3 presigned URL if (and only if) we truly have a key
+      // 3) Use S3 presigned URL if we have a key
       if (pdf?.s3Key) {
         const url = await getPresignedUrl(pdf.s3Key);
         window.open(url, "_blank", "noopener,noreferrer");
         return;
       }
 
-      // 4) Final fallback if nothing else matched (try chunked by row id)
+      // 4) Final fallback: try chunked by row id
       if (rowKey) {
         await downloadChunkedPDF(rowKey);
         return;
@@ -520,6 +501,7 @@ export default function PDFManager() {
       setDownloading(null);
     }
   };
+
 
   /* ---------------- render ---------------- */
   if (loading) {
@@ -535,25 +517,25 @@ export default function PDFManager() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 p-[30px]">
       {/* HEADER */}
-      <header className="bg-[#b9d4db] border-b shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+      <header className="bg-[#ffffff] shadow-none p-[10px] border-curve">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between border-0">
+          <div className="flex items-center gap-3 border-0">
             <div>
-              <h1 className="text-xl font-bold text-gray-900">PDF Manager</h1>
+              <h2 className="text-xl font-bold text-gray-900 m-[0] border-0">PDF Manager</h2>
             </div>
           </div>
           <div className="flex gap-3">
             <button
               onClick={fetchPDFMetadata}
-              className="px-5 py-2 m-2 text-sm font-medium rounded-md text-white bg-[#037f9e] hover:bg-[#026a83] edit"
+              className="px-5 py-2 m-2 text-sm font-medium rounded-md text-white bg-[#037f9e] hover:bg-[#026a83] edit border-0"
             >
               Refresh
             </button>
             <button
               onClick={() => navigate("/dashboard/create-invoice")}
-              className="px-5 py-2 text-sm m-2 font-medium rounded-md text-white bg-[#037f9e] hover:bg-[#026a83] edit"
+              className="px-5 py-2 text-sm m-2 font-medium rounded-md text-white bg-[#037f9e] hover:bg-[#026a83] edit border-0"
             >
               + New Invoice
             </button>
@@ -561,7 +543,7 @@ export default function PDFManager() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8 pdf-manager-block">
+      <main className="max-w-7xl mx-auto px-6 py-8 pdf-manager-block bg-[#ffffff] border-curve">
         {/* Breadcrumb */}
         <div className="mb-6 text-sm text-gray-600 home-block">
           <span className="cursor-pointer hover:underline" onClick={() => setLevel("root")}>Home</span>
@@ -611,7 +593,7 @@ export default function PDFManager() {
           <button
             onClick={handleBack}
             disabled={level === "root"}
-            className="mb-4 text-sm text-blue-700 hover:underline disabled:opacity-40 edit back-btn"
+            className="mb-4 text-sm  disabled:opacity-40  back-btn border-0 bg-[#D9D9D9] text-[#2D2D2D] p-[10px] border-curve w-[80px]"
           >
             ← Back
           </button>
@@ -929,7 +911,7 @@ function FolderCard({ name, count, onOpen, badge, disabled = false }) {
       role="button"
     >
       <div className="w-12 h-12 flex items-center justify-center rounded-lg bg-blue-50">
-        <svg width="50" height="50" viewBox="0 0 24 24" fill="#037f9e" aria-hidden="true">
+        <svg width="50" height="50" viewBox="0 0 24 24" fill="#355088" aria-hidden="true">
           <path d="M10 4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2h6z" />
         </svg>
       </div>

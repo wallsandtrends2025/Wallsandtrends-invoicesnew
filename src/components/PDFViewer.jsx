@@ -99,9 +99,9 @@ export default function PDFViewer() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center">
       {/* Header */}
-      <div className="bg-white border-b">
+      <div className="bg-white border-b w-full">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -134,45 +134,58 @@ export default function PDFViewer() {
         </div>
       </div>
 
-      {/* PDF Content */}
-      <div className="max-w-6xl mx-auto p-6">
-        {pdfData ? (
-          <div className="bg-white rounded-lg shadow border border-gray-200">
-            <div className="p-4">
-              <div className="flex justify-center">
-                <iframe
-                  src={pdfData}
-                  className="w-full max-w-5xl border border-gray-300 rounded"
-                  title="PDF Viewer"
-                  style={{ height: 'calc(100vh - 180px)', minHeight: '600px' }}
-                  onError={() => {
-                    console.error('PDF iframe failed to load');
-                  }}
-                />
+      {/* PDF Content - Centered */}
+      <div className="flex-1 flex items-center justify-center p-4 w-full">
+        <div className="w-full max-w-sm mx-auto">
+          {pdfData ? (
+            <>
+              <div className="bg-white rounded-lg shadow-lg border border-gray-200">
+                <div className="p-3">
+                  <div className="flex justify-center items-center bg-gray-50 p-3 rounded">
+                    <iframe
+                      src={pdfData}
+                      className="border border-gray-300 rounded a4-preview"
+                      title="PDF Viewer"
+                      style={{
+                        width: '320px', // Significantly reduced width (about 54% of original)
+                        height: '440px', // Significantly reduced height (about 52% of original)
+                        minWidth: '280px',
+                        minHeight: '350px',
+                        maxWidth: '75vw',
+                        maxHeight: '55vh',
+                        objectFit: 'contain',
+                        backgroundColor: 'white'
+                      }}
+                      onError={() => {
+                        console.error('PDF iframe failed to load');
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-4 py-3 border-t bg-gray-50 rounded-b-lg text-center mt-3">
+                <p className="text-sm text-gray-600">
+                  Having trouble viewing?
+                  <button
+                    onClick={handleDownload}
+                    className="ml-2 text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Download PDF instead
+                  </button>
+                </p>
+              </div>
+            </>
+          ) : (
+            <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-12 text-center">
+              <div className="text-gray-500">
+                <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-6"></div>
+                <h3 className="text-xl font-medium text-gray-900 mb-2">Loading PDF...</h3>
+                <p className="text-gray-600">Reconstructing document from chunks...</p>
               </div>
             </div>
-
-            <div className="px-4 py-3 border-t bg-gray-50 rounded-b-lg text-center">
-              <p className="text-sm text-gray-600">
-                Having trouble viewing?
-                <button
-                  onClick={handleDownload}
-                  className="ml-2 text-blue-600 hover:text-blue-800 font-medium"
-                >
-                  Download PDF instead
-                </button>
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-12 text-center">
-            <div className="text-gray-500">
-              <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-6"></div>
-              <h3 className="text-xl font-medium text-gray-900 mb-2">Loading PDF...</h3>
-              <p className="text-gray-600">Reconstructing document from chunks...</p>
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

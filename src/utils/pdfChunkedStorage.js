@@ -1,7 +1,5 @@
 import { db } from "../firebase";
 import { doc, setDoc, getDoc, collection, getDocs, query, where, orderBy } from "firebase/firestore";
-import { generateInvoicePDF } from "./generateInvoicePDF";
-import { generateProformaInvoicePDF } from "./generateProformaInvoicePDF";
 
 // Firestore document size limited so  ~1MB,   we'll use 800KB chunks to be safe 
 const CHUNK_SIZE = 800 * 1024; // 800KB in bytes
@@ -99,6 +97,10 @@ export async function generateAndSaveChunkedPDF(invoiceData, clientData, type = 
         invoiceDataKeys: Object.keys(invoiceData || {}),
         clientDataKeys: Object.keys(clientData || {})
       });
+
+      // Dynamic import to avoid conflicts with other dynamic imports
+      const { generateInvoicePDF } = await import('./generateInvoicePDF');
+      const { generateProformaInvoicePDF } = await import('./generateProformaInvoicePDF');
 
       pdfDoc = type === 'proforma'
         ? await generateProformaInvoicePDF(invoiceData, clientData)

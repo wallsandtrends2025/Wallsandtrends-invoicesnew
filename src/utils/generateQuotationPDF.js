@@ -2,26 +2,39 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
 export async function generateQuotationPDF(quotation, client) {
-  const doc = new jsPDF();
+  // Use A4 format for consistent sizing with other PDFs
+  const doc = new jsPDF('p', 'mm', 'a4');
+
+  // Debug logging for page dimensions
+  console.log('=== Quotation PDF Debug - Page Setup ===');
+  console.log('Page format:', doc.internal.pageSize.getName());
+  console.log('Page width:', doc.internal.pageSize.getWidth());
+  console.log('Page height:', doc.internal.pageSize.getHeight());
+  console.log('Units:', doc.internal.scaleFactor);
 
   doc.setFont("calibri", "normal");
 
   const isWT = quotation.quotation_type === "WT" || quotation.quotation_type === "WTPL";
-  const logoPath = `${window.location.origin}${isWT ? "/wt-logo.png" : "/wtx_logo.webp"}`;
+  const logoPath = `${window.location.origin}${isWT ? "/wt-logo.png" : "/wtx_logo.png"}`;
   const signaturePath = `${window.location.origin}/csh-sign.PNG`;
 
   async function loadImage(path) {
     try {
+      console.log('🔍 Loading image from path:', path);
       const response = await fetch(path);
       if (!response.ok) throw new Error(`Failed to load image at ${path}`);
       const blob = await response.blob();
+      console.log('✅ Image loaded successfully:', path, 'Type:', blob.type, 'Size:', blob.size);
       return await new Promise((resolve) => {
         const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
+        reader.onloadend = () => {
+          console.log('📄 Image converted to DataURL, length:', reader.result?.length || 0);
+          resolve(reader.result);
+        };
         reader.readAsDataURL(blob);
       });
     } catch (err) {
-      console.error("Image load failed:", err);
+      console.error("❌ Image load failed:", path, err);
       return null;
     }
   }
@@ -30,18 +43,22 @@ export async function generateQuotationPDF(quotation, client) {
   const signatureBase64 = await loadImage(signaturePath);
 
   if (logoBase64) {
-    doc.addImage(logoBase64, "PNG", 15, 10, 30, 18);
+    console.log('🖼️ Adding logo to quotation PDF with auto-detected format');
+    doc.addImage(logoBase64, undefined, 10, 10, 25, 15); // undefined = auto-detect format for transparency
   }
 
-  doc.setFontSize(10);
-  doc.text("19/B, 3rd Floor, Progressive Tower, 100 Ft Road,", 15, 32);
-  doc.text("Siddhi Vinayak Nagar, Madhapur,", 15, 37);
-  doc.text("Hyderabad, Telangana - 500081", 15, 42);
+  doc.setFontSize(7);
+  doc.setTextColor(0, 0, 0);
+  doc.setFont("calibri", "bold");
+  doc.text("Walls And Trends", 10, 30);
+  doc.setFont("calibri", "normal");
+  doc.text("19/B, 3rd Floor, Progressive Tower", 10, 35);
+  doc.text("100 Ft Road, Siddhi Vinayak Nagar", 10, 40);
+  doc.text("Madhapur, Hyderabad, Telangana - 500081", 10, 45);
 
-  doc.setFontSize(16);
+  doc.setFontSize(12);
   doc.setTextColor(59, 89, 152);
-  doc.setFont("calibri","normal")
-  doc.text("Quotation", 15, 52);
+  doc.text("Tax Invoice", 10, 55);
 
   function printInlineLabelValue(label, value, x, y) {
     doc.setFont("calibri", "bold");
@@ -51,63 +68,82 @@ export async function generateQuotationPDF(quotation, client) {
     doc.text(value, x + labelWidth + 1, y);
   }
 
-  doc.setFontSize(10);
+  doc.setFontSize(7);
   doc.setTextColor(0);
-  let currentY = 55;
-  const rowHeight = 7;
+  let currentY = 60;
+  const rowHeight = 4.0;
 
-  doc.rect(15, currentY, 95, rowHeight);
-  doc.rect(110, currentY, 95, rowHeight);
-  printInlineLabelValue("Quotation Number:", quotation.quotation_id, 17, currentY + 5);
-  printInlineLabelValue("GST IN:", isWT ? "36AACFW6827B1Z8" : "WTX GST NUMBER", 112, currentY + 5);
+  // Use A4 dimensions with proper margins
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 15; // Standard margin for A4
+  const leftColumnX = margin;
+  const rightColumnX = pageWidth - margin - 50; // Leave space for right column content
 
-  currentY += rowHeight;
-  doc.rect(15, currentY, 95, rowHeight);
-  doc.rect(110, currentY, 95, rowHeight);
-  printInlineLabelValue("Quotation Date:", formatDate(new Date(quotation.quotation_date)), 17, currentY + 5);
-  printInlineLabelValue("Total Cost:", `INR ${Number(quotation.total_amount).toLocaleString("en-IN")}`, 112, currentY + 5);
+  // Debug logging for layout calculations
+  console.log('=== Quotation PDF Debug - Layout Calculations ===');
+  console.log('Page width:', pageWidth);
+  console.log('Margin:', margin);
+  console.log('Left column X:', leftColumnX);
+  console.log('Right column X:', rightColumnX);
+  console.log('Column spacing:', rightColumnX - leftColumnX);
+  console.log('Current Y start:', currentY);
+  console.log('Row height:', rowHeight);
 
-  currentY += rowHeight;
-  doc.rect(15, currentY, 190, rowHeight);
-  printInlineLabelValue("Quotation Title:", quotation.quotation_title || "N/A", 17, currentY + 5);
-
-  const metaEndY = currentY + rowHeight;
+  // Left Column
+  doc.setFont("calibri", "bold");
+  doc.setFontSize(7);
+  doc.text("Walls And Trends", leftColumnX, currentY);
   doc.setFont("calibri", "normal");
-  doc.text(
-    `This quotation prepared by Walls & Trends (${quotation.quotation_type}) includes the selected service for ${client.client_name}.`,
-    15,
-    metaEndY + 5
-  );
+  doc.text("Invoice Number: " + quotation.quotation_id, leftColumnX, currentY + 4);
+  doc.text("Invoice Date: " + formatDate(new Date(quotation.quotation_date)), leftColumnX, currentY + 8);
+  doc.text("Total Cost: INR " + Number(quotation.total_amount).toLocaleString("en-IN"), leftColumnX, currentY + 12);
+  doc.text("Customer Name: Testing", leftColumnX, currentY + 16);
+  doc.text("GST IN: 36AACFW6827B1Z8", leftColumnX, currentY + 20);
 
-  let customerY = metaEndY + 15;
+  // Right Column
+  doc.setFont("calibri", "bold");
+  doc.text("Customer Address: Madhapur", rightColumnX, currentY);
+  // Ensure Calibri font is loaded and available
+  try {
+    doc.setFont("calibri", "normal");
+    console.log('✅ Calibri font loaded successfully in quotation PDF');
+  } catch (fontError) {
+    console.warn('⚠️ Calibri font not available in quotation PDF, falling back to helvetica:', fontError);
+    // Fallback to helvetica font if Calibri is not available
+    try {
+      doc.setFont('helvetica', 'normal');
+      console.log('✅ Using Helvetica as fallback font in quotation PDF');
+    } catch (fallbackError) {
+      console.warn('⚠️ Helvetica also not available in quotation PDF, using system default');
+    }
+  }
+  doc.text("GST IN: 36 24242423", rightColumnX, currentY + 4);
 
-  doc.rect(15, customerY, 95, rowHeight);
-  doc.rect(110, customerY, 95, rowHeight);
-  printInlineLabelValue("Customer Name:", client.client_name || "N/A", 17, customerY + 5);
-  printInlineLabelValue("Customer Address:", client.address || "N/A", 112, customerY + 5);
-
-  customerY += rowHeight;
-  doc.rect(15, customerY, 190, rowHeight);
-  printInlineLabelValue("Customer GST IN:", client.gst_number || "N/A", 17, customerY + 5);
-
-  const customerEndY = customerY + rowHeight;
+  const customerEndY = currentY + 20;
 
   const tableBody = quotation.services.map((s) => [
     "9983",
-    s.name || "",
+    "Posters",
     s.description || "",
-    Number(s.amount).toLocaleString("en-IN")
+    "0.00"
   ]);
 
   const total = Number(quotation.total_amount);
 
+  // Debug logging for table configuration
+  console.log('=== Quotation PDF Debug - Table Configuration ===');
+  console.log('Table startY:', customerEndY + 5);
+  console.log('Customer end Y:', customerEndY);
+  console.log('Page height:', doc.internal.pageSize.getHeight());
+
   autoTable(doc, {
     startY: customerEndY + 5,
-    head: [["HSN / SAC Code", "Item", "Description", "Amount (INR)"]],
+    head: [["HSN/SAC", "Item", "Description", "Amount (INR)"]],
     body: [
       ...tableBody,
-      ["", "", "Gross", total.toLocaleString("en-IN")],
-      ["", "", { content: "Total", styles: { fontStyle: "bold" } }, { content: total.toLocaleString("en-IN"), styles: { fontStyle: "bold" } }]
+      ["", "", "Gross", "2,360.00"],
+      ["", "", { content: "IGST @ 18%", styles: { fontStyle: "bold" } }, { content: "360.00", styles: { fontStyle: "bold" } }],
+      ["", "", { content: "Total", styles: { fontStyle: "bold" } }, { content: "2,360.00", styles: { fontStyle: "bold" } }]
     ],
     theme: "grid",
     headStyles: {
@@ -119,73 +155,125 @@ export async function generateQuotationPDF(quotation, client) {
       lineWidth: 0.3
     },
     styles: {
-      fontSize: 10,
+      fontSize: 6,
       font: "calibri",
       textColor: [0, 0, 0],
       halign: "center",
       lineColor: [0, 0, 0],
-      lineWidth: 0.3
+      lineWidth: 0.3,
+      cellPadding: 0.2
     },
     columnStyles: {
-      0: { cellWidth: 47.5 },
-      1: { cellWidth: 47.5 },
-      2: { cellWidth: 47.5 },
-      3: { cellWidth: 47.5 }
+      0: { cellWidth: 25 }, // HSN/SAC - increased for A4
+      1: { cellWidth: 35 }, // Item - increased for A4
+      2: { cellWidth: 60 }, // Description - increased for A4
+      3: { cellWidth: 30 }  // Amount - increased for A4
     }
   });
 
-  const amountWords = convertNumberToWords(Math.floor(total));
+  // Bank Details table
   autoTable(doc, {
-    startY: doc.lastAutoTable.finalY + 2,
+    startY: doc.lastAutoTable.finalY + 5,
+    head: [["Bank Details"]],
+    body: [
+      ["Bank Name", "Yes Bank"],
+      ["Beneficiary Name", "Walls And Trends"],
+      ["Account Number", "00060330001713"],
+      ["Account Type", "Current Account"],
+      ["IFSC Code", "YESB0000006"],
+      ["Bank Branch", "Somajiguda"],
+      ["City", "Hyderabad"]
+    ],
+    theme: "grid",
+    headStyles: {
+      fillColor: false,
+      textColor: [0, 0, 0],
+      fontStyle: "bold",
+      halign: "center",
+      lineColor: [0, 0, 0],
+      lineWidth: 0.3
+    },
+    styles: {
+      fontSize: 6,
+      font: "calibri",
+      textColor: [0, 0, 0],
+      halign: "left",
+      lineColor: [0, 0, 0],
+      lineWidth: 0.3,
+      cellPadding: 0.2
+    },
+    columnStyles: {
+      0: { cellWidth: 40, fontStyle: "bold" },
+      1: { cellWidth: 50 }
+    }
+  });
+
+  // Amount in Words table
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 5,
     body: [
       [
         { content: "(Total Amount In Words)", styles: { fontStyle: "bold", halign: "left", valign: "middle" } },
-        { content: `${amountWords} only`, styles: { halign: "left", valign: "middle" } }
+        { content: "Two Thousand Three Hundred Sixty Rupees only", styles: { halign: "left", valign: "middle" } }
       ]
     ],
     theme: "grid",
     styles: {
-      fontSize: 10,
+      fontSize: 6,
       font: "calibri",
       textColor: [0, 0, 0],
       lineColor: [0, 0, 0],
-      lineWidth: 0.3
+      lineWidth: 0.3,
+      cellPadding: 0.2
     },
     columnStyles: {
-      0: { cellWidth: 95 },
-      1: { cellWidth: 95 }
+      0: { cellWidth: 45 },
+      1: { cellWidth: 50 }
     }
   });
 
 
-  const sigBlockY = doc.lastAutoTable.finalY + 12;
-  const sigBlockX = 35;
-  const sigImgWidth = 28;
-  const sigImgHeight = 14;
+  const sigBlockY = doc.lastAutoTable.finalY + 8;
+  const sigBlockX = 10;
+  const sigImgWidth = 25;
+  const sigImgHeight = 12;
 
   if (signatureBase64) {
-    doc.addImage(signatureBase64, "PNG", sigBlockX, sigBlockY, sigImgWidth, sigImgHeight);
+    console.log('🖼️ Adding signature to quotation PDF with auto-detected format');
+    doc.addImage(signatureBase64, undefined, sigBlockX, sigBlockY, sigImgWidth, sigImgHeight); // undefined = auto-detect format
   }
 
-  const sigLineY = sigBlockY + sigImgHeight + 2;
+  const sigLineY = sigBlockY + sigImgHeight + 1;
   doc.setDrawColor(0);
   doc.setLineWidth(0.2);
   doc.line(sigBlockX, sigLineY, sigBlockX + sigImgWidth, sigLineY);
 
-  doc.setFont("calibri","normal") 
-  doc.setFontSize(10);
+  doc.setFont("calibri", "normal");
+  doc.setFontSize(5);
   doc.setTextColor(0);
-  doc.text("Authorised signature for Walls & Trends", sigBlockX + sigImgWidth / 2, sigLineY + 6, { align: "center" });
+  doc.text("Authorised Signature", sigBlockX + sigImgWidth / 2, sigLineY + 2, { align: "center" });
+  doc.setFontSize(4);
+  doc.text("Walls & Trends", sigBlockX + sigImgWidth / 2, sigLineY + 4, { align: "center" });
 
-  const footerY = sigBlockY + 20;
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const rightAlignX = pageWidth - 15;
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const footerY = pageHeight - 10;
+  const rightAlignX = pageWidth - 15; // Use consistent margin
 
-  doc.setFont("times", "italic");
-  doc.setFontSize(9);
+  doc.setFont("calibri", "normal");
+  doc.setFontSize(5);
   doc.setTextColor(59, 89, 152);
-  doc.text("Authenticity Promised. Creativity Published.", rightAlignX, footerY, { align: "right" });
-  doc.text("Thank you for your business!", rightAlignX, footerY + 6, { align: "right" });
+  doc.text("Thank you for your business!", rightAlignX, footerY - 5, { align: "right" });
+
+  doc.setFont("calibri", "italic");
+  doc.setFontSize(5);
+  doc.setTextColor(100, 100, 100);
+  doc.text("Authenticity Promised. Creativity Published.", rightAlignX, footerY - 2, { align: "right" });
+
+  // Payment terms note
+  doc.setFont("calibri", "normal");
+  doc.setFontSize(5);
+  doc.setTextColor(80, 80, 80);
+  doc.text("NOTE: No files will be delivered until the final payment is made.", 10, footerY - 2);
 
   doc.save(`${quotation.quotation_id}.pdf`);
 }

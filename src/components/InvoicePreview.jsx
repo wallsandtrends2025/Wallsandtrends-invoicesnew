@@ -1,108 +1,210 @@
 // src/pages/InvoicePreview.jsx
 import { useEffect, useState, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { db } from "../firebase";
-import { doc, getDoc } from "firebase/firestore";
-import html2canvas from "html2canvas";
+import { doc, getDoc, collection, getDocs, query, where, limit } from "firebase/firestore";
 import jsPDF from "jspdf";
 
 export default function InvoicePreview() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const previewRef = useRef();
 
   const [invoice, setInvoice] = useState(null);
   const [client, setClient] = useState(null);
+  const previewRef = useRef(null);
+  const [searchParams] = useSearchParams();
+  const autoDoneRef = useRef(false);
 
   useEffect(() => {
     const fetchInvoice = async () => {
       try {
-        const invoiceRef = doc(db, "invoices", id);
-        const invoiceSnap = await getDoc(invoiceRef);
-        if (invoiceSnap.exists()) {
-          const invoiceData = invoiceSnap.data();
-          setInvoice(invoiceData);
+        const by = (searchParams.get('by') || '').toLowerCase();
+        let invoiceData = null;
 
-          const clientRef = doc(db, "clients", invoiceData.client_id);
-          const clientSnap = await getDoc(clientRef);
-          if (clientSnap.exists()) {
-            setClient(clientSnap.data());
+        if (by === 'invoice_id') {
+          const q = query(collection(db, 'invoices'), where('invoice_id', '==', id), limit(1));
+          const invSnap = await getDocs(q);
+          if (!invSnap.empty) {
+            invoiceData = invSnap.docs[0].data();
+          }
+        } else {
+          const invoiceRef = doc(db, 'invoices', id);
+          const invoiceSnap = await getDoc(invoiceRef);
+          if (invoiceSnap.exists()) {
+            invoiceData = invoiceSnap.data();
           }
         }
+
+        if (invoiceData) {
+          setInvoice(invoiceData);
+          const clientRef = doc(db, 'clients', invoiceData.client_id);
+          const clientSnap = await getDoc(clientRef);
+          if (clientSnap.exists()) setClient(clientSnap.data());
+        }
       } catch (err) {
-        console.error("Error loading invoice:", err);
+        console.error('Error loading invoice:', err);
       }
     };
 
     fetchInvoice();
-  }, [id]);
+  }, [id, searchParams]);
+
+  // Auto-download via query params (?autoDownload=tax|proforma&close=1)
+  useEffect(() => {
+    const auto = (searchParams.get('autoDownload') || '').toLowerCase();
+    const shouldClose = searchParams.get('close') === '1';
+    if (!invoice || !client || autoDoneRef.current || !auto) return;
+    autoDoneRef.current = true;
+
+    (async () => {
+      try {
+        if (auto === 'tax') {
+          await handleDownloadTax();
+        } else if (auto === 'proforma') {
+          await handleDownloadProforma();
+        }
+      } catch (e) {
+        console.error('Auto-download failed:', e);
+      } finally {
+        if (shouldClose) {
+          setTimeout(() => {
+            try { window.close(); } catch (_) {}
+          }, 500);
+        }
+      }
+    })();
+  }, [invoice, client, searchParams]);
 
   const handleEdit = () => {
     navigate(`/dashboard/edit-invoice/${id}`);
   };
 
-  const handleDownloadTax = async () => {
-    if (!invoice || !client || !previewRef.current) return;
+  const testModuleImport = async () => {
     try {
-      const canvas = await html2canvas(previewRef.current, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-      });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = 210;
-      const pdfHeight = 297;
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      const finalWidth = imgWidth * ratio;
-      const finalHeight = imgHeight * ratio;
-      const x = (pdfWidth - finalWidth) / 2;
-      const y = (pdfHeight - finalHeight) / 2;
+      console.log('🧪 Testing module import...');
 
-      pdf.addImage(imgData, 'PNG', x, y, finalWidth, finalHeight);
-      pdf.save(`${invoice.invoice_id}.pdf`);
+      // Test the module loading
+      const { testModuleLoading } = await import('../utils/generateInvoicePDF');
+      const result = testModuleLoading();
+
+      console.log('✅ Module test result:', result);
+      alert('Module loaded successfully! Check console for details.');
+
     } catch (error) {
-      console.error('Error generating PDF:', error);
+      console.error('❌ Module import test failed:', error);
+      alert('Module import failed! Check console for error details.');
+    }
+  };
+
+
+  const handleDownloadTax = async () => {
+    if (!invoice || !client) {
+      alert('Invoice data not available');
+      return;
+    }
+
+    try {
+      console.log('🔄 Attempting to import generateInvoicePDF module...');
+
+      // Import the PDF generation utility
+      const { generateInvoicePDF } = await import('../utils/generateInvoicePDF');
+
+      console.log('✅ Module imported successfully:', typeof generateInvoicePDF);
+
+      // Generate PDF using the dedicated utility
+      const pdfDoc = await generateInvoicePDF(invoice, client);
+
+      const timestamp = new Date().getTime();
+      pdfDoc.save(`${invoice.invoice_id}_TAX_${timestamp}.pdf`);
+    } catch (error) {
+      console.error('❌ Tax Invoice PDF Generation Failed:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        invoice_id: invoice?.invoice_id,
+        client_name: client?.client_name
+      });
+
+      // Provide user-friendly error message with guidance
+      let userMessage = 'Error generating Tax Invoice PDF. ';
+      if (error.message.includes('font')) {
+        userMessage += 'Font loading issue - check if Calibri font is available. ';
+      } else if (error.message.includes('image') || error.message.includes('logo')) {
+        userMessage += 'Image loading issue - check if logo/signature images are accessible. ';
+      } else if (error.message.includes('data')) {
+        userMessage += 'Data validation issue - check invoice and client information. ';
+      } else {
+        userMessage += 'Unknown error occurred. ';
+      }
+      userMessage += 'See browser console (F12) for detailed technical information.';
+
+      alert(userMessage);
     }
   };
 
   const handleDownloadProforma = async () => {
-    if (!invoice || !client || !previewRef.current) return;
+    if (!invoice || !client) {
+      alert('Invoice or client data not available');
+      return;
+    }
+
     try {
-      // Temporarily change the title to Proforma Invoice
-      const titleElement = previewRef.current.querySelector('h1');
-      const originalTitle = titleElement.textContent;
-      const originalColor = titleElement.style.color;
-      titleElement.textContent = 'Proforma Invoice';
-      // Keep the same color
+      console.log('🔄 Attempting to import generateProformaInvoicePDF module...');
 
-      const canvas = await html2canvas(previewRef.current, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-      });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = 210;
-      const pdfHeight = 297;
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      const finalWidth = imgWidth * ratio;
-      const finalHeight = imgHeight * ratio;
-      const x = (pdfWidth - finalWidth) / 2;
-      const y = (pdfHeight - finalHeight) / 2;
+      // Import the PDF generation utility
+      const { generateProformaInvoicePDF } = await import('../utils/generateProformaInvoicePDF');
 
-      pdf.addImage(imgData, 'PNG', x, y, finalWidth, finalHeight);
-      pdf.save(`${invoice.invoice_id}_PROFORMA.pdf`);
+      console.log('✅ Proforma module imported successfully:', typeof generateProformaInvoicePDF);
 
-      // Restore original title and color
-      titleElement.textContent = originalTitle;
-      titleElement.style.color = originalColor;
+      // Generate PDF using the dedicated utility
+      const pdfDoc = await generateProformaInvoicePDF(invoice, client);
+
+      const timestamp = new Date().getTime();
+      pdfDoc.save(`${invoice.invoice_id}_PROFORMA_${timestamp}.pdf`);
     } catch (error) {
-      console.error('Error generating PDF:', error);
+      console.error('❌ Proforma Invoice PDF Generation Failed:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        invoice_id: invoice?.invoice_id,
+        client_name: client?.client_name
+      });
+
+      // Provide user-friendly error message with guidance
+      let userMessage = 'Error generating Proforma Invoice PDF. ';
+      if (error.message.includes('font')) {
+        userMessage += 'Font loading issue - check if Calibri font is available. ';
+      } else if (error.message.includes('image') || error.message.includes('logo')) {
+        userMessage += 'Image loading issue - check if logo/signature images are accessible. ';
+      } else if (error.message.includes('data')) {
+        userMessage += 'Data validation issue - check invoice and client information. ';
+      } else {
+        userMessage += 'Unknown error occurred. ';
+      }
+      userMessage += 'See browser console (F12) for detailed technical information.';
+
+      alert(userMessage);
+    }
+  };
+
+  const handleDebugPDF = async () => {
+    try {
+      console.log('🔧 Starting debug PDF generation...');
+
+      // Import the debug function
+      const { debugPDFGeneration } = await import('../utils/generateInvoicePDF');
+
+      console.log('✅ Debug function imported successfully');
+
+      // Generate debug PDF
+      const result = await debugPDFGeneration();
+
+      console.log('Debug result:', result);
+      alert('Debug PDF generation completed! Check console for details and downloads folder for the PDF file.');
+
+    } catch (error) {
+      console.error('❌ Debug PDF generation failed:', error);
+      alert(`Debug PDF generation failed: ${error.message}`);
     }
   };
 
@@ -114,6 +216,7 @@ export default function InvoicePreview() {
     const month = d.toLocaleString("default", { month: "long" });
     return `${dd} ${month} ${yyyy}`;
   };
+
 
   // ---------- NEW: robust Indian-numbering converter (Rupees & Paise) ----------
   function numberToWordsINR(amountInput) {
@@ -180,15 +283,16 @@ export default function InvoicePreview() {
     );
   }
 
-  // Company visuals
-  const isWT = invoice.invoice_type === "WT" || invoice.invoice_type === "WTPL";
-  const isWTX = invoice.invoice_type === "WTX" || invoice.invoice_type === "WTXPL";
+  // Company visuals (robust brand detection)
+  const type = String(invoice.invoice_type || '').trim().toUpperCase();
+  const isWTX = type === "WTX" || type === "WTXPL" || type.includes("WTX");
+  const isWT = !isWTX; // default to WT when unknown
   const headingColor = isWTX ? "#ffde58" : "#3b5998";
-  const logoPath = isWT ? "/wt-logo.png" : "/wtx_logo.png";
+  const logoPath = isWTX ? "/wtx_logo.png" : "/wt-logo.png";
 
   // ======== AMOUNTS & FORMATTING (always 2 decimals) ========
   const fmt2 = (n) =>
-    Number(n).toLocaleString("en-IN", {
+    Number(n || 0).toLocaleString("en-IN", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
@@ -220,6 +324,7 @@ export default function InvoicePreview() {
   const cgstAmount = storedCGST || +(subtotal * (cgstRate / 100)).toFixed(2);
   const sgstAmount = storedSGST || +(subtotal * (sgstRate / 100)).toFixed(2);
   const igstAmount = storedIGST || +(subtotal * (igstRate / 100)).toFixed(2);
+  const summaryRowCount = 1 + (isIndian && isTelangana ? 2 : 1) + 1;
 
   // ======== SERVICES NORMALIZATION ========
   const lineItems = Array.isArray(invoice.services) && invoice.services.length
@@ -240,237 +345,594 @@ export default function InvoicePreview() {
       ];
 
   return (
-    <div className="min-h-screen bg-white px-6 py-10 font-sans text-[13px] text-gray-900 preview">
+    <div className="bg-gray-100 font-sans text-[13px] text-gray-900 preview" style={{ margin: '0 auto', padding: '0' }}>
       {/* actions */}
-      <button
-        onClick={handleEdit}
-        className="absolute top-4 left-6 bg-[#3b5999] text-[#ffffff] px-4 py-2 rounded hover:bg-[#2d4373] downloadbtn downloadbtn3"
-      >
-        Edit Invoice
-      </button>
-      <div className="absolute block absolute bottons-block">
+      <div className="bg-white border-b border-gray-200 px-4 py-3 flex gap-2 justify-center" style={{ margin: '0', padding: '12px 24px' }}>
+        <button
+          onClick={handleEdit}
+          className="bg-[#3b5999] text-[#ffffff] px-4 py-2 rounded hover:bg-[#2d4373] text-sm"
+        >
+          Edit Invoice
+        </button>
         <button
           onClick={handleDownloadTax}
-          className="absolute top-4 left-6 bg-[#3b5999] text-[#ffffff] px-4 py-2 rounded hover:bg-[#2d4373]  downloadbtn "
+          className="bg-[#3b5999] text-[#ffffff] px-4 py-2 rounded hover:bg-[#2d4373] text-sm"
         >
           Download Tax Invoice PDF
         </button>
         <button
           onClick={handleDownloadProforma}
-          className="absolute top-4 left-6 bg-[#3b5999] text-[#ffffff] px-4 py-2 rounded hover:bg-[#2d4373]  downloadbtn downloadbtn2"
+          className="bg-[#3b5999] text-[#ffffff] px-4 py-2 rounded hover:bg-[#2d4373] text-sm"
         >
-          Download Proforma Invoice PDF
+          Download Proforma PDF
         </button>
+        
       </div>
 
-      <div ref={previewRef} className="max-w-5xl mx-auto p-6">
+      <div className="flex justify-center items-start bg-gray-100" style={{
+          margin: '0',
+          padding: '10px',
+          minHeight: '100vh',
+          width: '100%',
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'center',
+          overflow: 'visible',
+          paddingTop: '15px'
+        }}>
+         <div ref={previewRef} className="a4-preview bg-white" style={{
+            width: '210mm',
+            height: 'auto',
+            backgroundColor: 'white',
+            padding: '10mm 15mm 10mm 15mm',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            border: '1px solid #e5e7eb',
+            margin: '0 auto',
+            fontSize: '10px',
+            lineHeight: '1.2',
+            overflow: 'visible',
+            position: 'relative',
+            display: 'block',
+            visibility: 'visible',
+            opacity: '1',
+            zoom: '1.15'
+          }}>
         {/* logo + address */}
-        <div className="mb-3">
-          <img src={logoPath} alt="Company Logo" className="h-16" />
-          <div className="text-left text-[12px] leading-1">
-            <p>19/B, 3rd Floor, Progressive Tower<br />100 Ft Road, Siddhi Vinayak Nagar<br />Madhapur, Hyderabad, Telangana - 500081</p>
-          </div>
+        <div className="mb-2" style={{ marginBottom: '8px', textAlign: 'left' }}>
+           <img src={logoPath} alt="Company Logo" className="h-12" style={{ height: '44px', width: 'auto' }} />
+           <div className="text-left text-[9px] leading-tight" style={{ fontSize: '9px', lineHeight: '1.2', marginTop: '10px', textAlign: 'left' }}>
+             <p>19/B, 3rd Floor, Progressive Tower<br />100 Ft Road, Siddhi Vinayak Nagar<br />Madhapur, Hyderabad, Telangana - 500081</p>
+           </div>
         </div>
 
-        {/* Heading */}
-        <h1 className="text-2xl font-bold mb-3" style={{ color: headingColor }}>
-          Tax Invoice
+        {/* Heading - Enhanced styling with consistent format */}
+        <h1 className="text-xl mb-4" style={{ color: headingColor, fontSize: '20px', marginBottom: '10px', marginTop: '0px', fontFamily: 'Calibri, sans-serif', fontWeight: 'normal' }}>
+           Tax Invoice
         </h1>
-
+        
         {/* Top info table */}
-        <table className="w-full border border-gray-100 border-collapse mb-1">
+        <table className="w-full border-collapse mb-3" style={{
+          marginBottom: '8px',
+          border: '1px solid #cccccc',
+          backgroundColor: '#ffffff',
+          fontFamily: 'Calibri, sans-serif',
+          fontSize: '9px'
+        }}>
           <tbody>
-            <tr>
-              <td className="border border-gray-100 p-0 font-medium">
-                {isWT ? "Walls And Trends" : "Walls And Trends"}
-
+            <tr style={{ border: '1px solid #cccccc' }}>
+              <td className="p-1 text-[8px] text-left" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'left',
+                backgroundColor: '#ffffff',
+                verticalAlign: 'top'
+              }}>
+                <span style={{fontWeight: '600'}}>{isWT ? "Walls And Trends" : "Walls And Trends"}</span>
               </td>
-              <td className="border border-gray-100 p-0 font-medium">
-                GST IN: {isWT ? "36AACFW6827B1Z8" : "36AAACW8991C1Z9"}
+              <td className="p-1 text-[8px] text-left" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'left',
+                backgroundColor: '#ffffff',
+                verticalAlign: 'top'
+              }}>
+                <span style={{fontWeight: '600'}}>GST IN:</span> <span style={{fontWeight: 'normal'}}>{isWT ? "36AACFW6827B1Z8" : "36AAACW8991C1Z9"}</span>
               </td>
             </tr>
-            <tr>
-              <td className="border border-gray-100 p-0">
-                Invoice Number: {invoice.invoice_id}
+            <tr style={{ border: '1px solid #cccccc' }}>
+              <td className="p-1 text-[7px] text-left" style={{
+                padding: '2px 4px',
+                fontSize: '7px',
+                border: '1px solid #cccccc',
+                textAlign: 'left',
+                backgroundColor: '#ffffff',
+                verticalAlign: 'top',
+                fontFamily: 'Calibri, sans-serif'
+              }}>
+                <div style={{textAlign: 'left', width: '100%'}}>
+                  <span style={{fontWeight: '600'}}>Invoice Number:</span> <span style={{fontWeight: 'normal'}}>{invoice.invoice_id}</span>
+                </div>
               </td>
-              <td className="border border-gray-100 p-0">
-                Invoice Date:{" "}
-                {invoice.invoice_date
-                  ? formatDate(invoice.invoice_date)
-                  : invoice.created_at?.toDate
-                  ? formatDate(invoice.created_at.toDate())
-                  : ""}
+              <td className="p-1 text-[6px] text-left" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'left',
+                backgroundColor: '#ffffff',
+                verticalAlign: 'top'
+              }}>
+                <div style={{textAlign: 'left', width: '100%'}}>
+                  <span style={{fontWeight: '600'}}>Invoice Date:</span>{" "}
+                  <span style={{fontWeight: 'normal'}}>
+                  {invoice.invoice_date
+                    ? formatDate(invoice.invoice_date)
+                    : invoice.created_at?.toDate
+                    ? formatDate(invoice.created_at.toDate())
+                    : ""}
+                  </span>
+                </div>
               </td>
             </tr>
-            <tr>
-              <td className="border border-gray-100 p-0">
-                Invoice Title: {invoice.invoice_title || lineItems[0]?.name}
+            <tr style={{ border: '1px solid #cccccc' }}>
+              <td className="p-1 text-[6px] text-left" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'left',
+                backgroundColor: '#ffffff',
+                verticalAlign: 'top'
+              }}>
+                <div style={{textAlign: 'left', width: '100%'}}>
+                  <span style={{fontWeight: '600'}}>Invoice Title:</span> <span style={{fontWeight: 'normal'}}>{invoice.invoice_title || lineItems[0]?.name}</span>
+                </div>
               </td>
-              <td className="border border-gray-100 p-0 font-semibold">
-                Total Cost: INR {fmt2(total)}
+              <td className="p-1 font-semibold text-[6px] text-left" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                fontWeight: 'bold',
+                textAlign: 'left',
+                backgroundColor: '#ffffff',
+                verticalAlign: 'top'
+              }}>
+                <div style={{textAlign: 'left', width: '100%'}}>
+                  <span style={{fontWeight: '600'}}>Total Cost:</span> <span style={{fontWeight: 'normal'}}>INR {fmt2(total)}</span>
+                </div>
               </td>
             </tr>
           </tbody>
         </table>
 
-       
+
 
         {/* Customer block */}
-        <table className="w-full border border-gray-100 border-collapse mb-1">
+        <table className="w-full border-collapse mb-3" style={{
+          marginBottom: '8px',
+          border: '1px solid #cccccc',
+          backgroundColor: '#ffffff',
+          fontFamily: 'Calibri, sans-serif',
+          fontSize: '9px'
+        }}>
           <tbody>
-            <tr>
-              <td className="border border-gray-100 p-0">
-                Customer Name: {client.client_name}
+            <tr style={{ border: '1px solid #cccccc' }}>
+              <td className="p-1 text-[6px] text-left" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'left',
+                backgroundColor: '#ffffff',
+                verticalAlign: 'top',
+                lineHeight: '1.2'
+              }}>
+                <div style={{textAlign: 'left', width: '100%', margin: '0', padding: '0'}}>
+                  <span style={{fontWeight: '600'}}>Customer Name:</span> <span style={{fontWeight: 'normal'}}>{client.client_name}</span>
+                </div>
               </td>
-              <td className="border border-gray-100 p-0">
-                Customer Address: {client.address}
+              <td className="p-1 text-[6px] text-left" rowSpan={2} style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'left',
+                backgroundColor: '#ffffff',
+                verticalAlign: 'top',
+                lineHeight: '1.2'
+              }}>
+                <div style={{textAlign: 'left', width: '100%', margin: '0', padding: '0'}}>
+                  <span style={{fontWeight:'bold'}}>Customer Address:</span> {client.address}
+                </div>
               </td>
             </tr>
-            <tr>
-              <td className="border border-gray-100 p-0" colSpan={2}>
-                Customer GST IN: {(client.gst_number || "").trim() || "NA"}
+            <tr style={{ border: '1px solid #cccccc' }}>
+              <td className="p-1 text-[6px] text-left" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'left',
+                backgroundColor: '#ffffff',
+                verticalAlign: 'top',
+                lineHeight: '1.2'
+              }}>
+                <div style={{
+                  textAlign: 'left',
+                  width: '100%',
+                  margin: '0',
+                  padding: '0'
+                }}>
+                  <span style={{fontWeight:'bold'}}>Customer GST IN:</span> {(client.gst_number || "").trim() || "NA"}
+                </div>
               </td>
             </tr>
           </tbody>
         </table>
 
         {/* Items table */}
-        <table className="w-full border border-gray-100 border-collapse mb-1 text-center">
-          <thead className="bg-gray-100 text-black">
-            <tr>
-              <th className="p-0 border border-gray-100">HSN / SAC Code</th>
-              <th className="p-0 border border-gray-100">Item</th>
-              <th className="p-0 border border-gray-100">Description</th>
-              <th className="p-0 border border-gray-100">Amount (INR)</th>
+        <table className="w-full border-collapse mb-3 text-center" style={{ marginBottom: '12px', fontSize: '10px', border: '1px solid #cccccc', backgroundColor: '#ffffff', fontFamily: 'Calibri, sans-serif' }}>
+          <thead className="text-black" style={{ backgroundColor: '#ffffff', border: '1px solid #cccccc' }}>
+            <tr style={{ border: '1px solid #cccccc', backgroundColor: '#ffffff' }}>
+              <th className="p-1 text-[6px] text-center font-bold" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                fontWeight: 'bold',
+                textAlign: 'center',
+                backgroundColor: '#ffffff',
+                color: '#000000'
+              }}>HSN / SAC Code</th>
+              <th className="p-1 text-[6px] text-center font-bold" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                fontWeight: 'bold',
+                textAlign: 'center',
+                backgroundColor: '#ffffff',
+                color: '#000000'
+              }}>Item</th>
+              <th className="p-1 text-[6px] text-center font-bold" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                fontWeight: 'bold',
+                textAlign: 'center',
+                backgroundColor: '#ffffff',
+                color: '#000000'
+              }}>Description</th>
+              <th className="p-1 text-[6px] text-center font-bold" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                fontWeight: 'bold',
+                textAlign: 'center',
+                backgroundColor: '#ffffff',
+                color: '#000000'
+              }}>Amount (INR)</th>
             </tr>
           </thead>
           <tbody>
             {lineItems.map((it, idx) => (
-              <tr key={idx}>
-                <td className="border border-gray-100 p-0">9983</td>
-                <td className="border border-gray-100 p-0">{it.name}</td>
-                <td className="border border-gray-100 p-0">{it.description}</td>
-                <td className="border border-gray-100 p-0 text-center pr-4">{fmt2(it.amount)}</td>
+              <tr key={idx} style={{ border: '1px solid #cccccc' }}>
+                <td className="p-1 text-[6px] text-center" style={{
+                  padding: '3px 6px',
+                  fontSize: '8px',
+                  border: '1px solid #cccccc',
+                  textAlign: 'center',
+                  backgroundColor: '#ffffff'
+                }}>9983</td>
+                <td className="p-1 text-[6px] text-center" style={{
+                  padding: '3px 6px',
+                  fontSize: '8px',
+                  border: '1px solid #cccccc',
+                  textAlign: 'left',
+                  backgroundColor: '#ffffff'
+                }}>{it.name}</td>
+                <td className="p-1 text-[6px] text-center" style={{
+                  padding: '3px 6px',
+                  fontSize: '8px',
+                  border: '1px solid #cccccc',
+                  textAlign: 'center',
+                  backgroundColor: '#ffffff'
+                }}>{it.description}</td>
+                <td className="p-1 text-[6px] text-center" style={{
+                  padding: '3px 6px',
+                  fontSize: '8px',
+                  border: '1px solid #cccccc',
+                  textAlign: 'center',
+                  backgroundColor: '#ffffff',
+                  whiteSpace: 'nowrap'
+                }}>{fmt2(it.amount)}</td>
               </tr>
             ))}
 
-            {/* Gross */}
-            <tr>
-              <td className="border border-gray-100 p-0 text-center" colSpan={3}>
-                Gross
-              </td>
-              <td className="border border-gray-100 p-0 text-center pr-4">{fmt2(subtotal)}</td>
+            {/* Summary with rowSpan on first two columns to match reference layout */}
+            <tr style={{ border: '1px solid #cccccc' }}>
+              <td rowSpan={summaryRowCount} style={{
+                padding: '0',
+                border: '1px solid #cccccc',
+                backgroundColor: '#ffffff'
+              }}></td>
+              <td rowSpan={summaryRowCount} style={{
+                padding: '0',
+                border: '1px solid #cccccc',
+                backgroundColor: '#ffffff'
+              }}></td>
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}><span style={{fontWeight:'bold'}}>Gross</span></td>
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'center',
+                backgroundColor: '#ffffff',
+                whiteSpace: 'nowrap'
+              }}>{fmt2(subtotal)}</td>
             </tr>
 
-            {/* === TAX: show ONLY the applicable rows === */}
-            {isIndian && isTelangana && (
+            {isIndian && isTelangana ? (
               <>
-                <tr>
-                  <td className="border border-gray-100 p-0 text-center" colSpan={3}>
-                    CGST @ 9%
-                  </td>
-                  <td className="border border-gray-100 p-0 text-center pr-4">{fmt2(cgstAmount)}</td>
+                <tr style={{ border: '1px solid #cccccc' }}>
+                  <td className="p-1 text-[6px] text-center" style={{
+                    padding: '3px 6px',
+                    fontSize: '8px',
+                    border: '1px solid #cccccc',
+                    textAlign: 'center',
+                    backgroundColor: '#ffffff'
+                  }}><span style={{fontWeight:'bold'}}>CGST @ 9%</span></td>
+                  <td className="p-1 text-[6px] text-center" style={{
+                    padding: '3px 6px',
+                    fontSize: '8px',
+                    border: '1px solid #cccccc',
+                    textAlign: 'center',
+                    backgroundColor: '#ffffff',
+                    whiteSpace: 'nowrap'
+                  }}>{fmt2(cgstAmount)}</td>
                 </tr>
-                <tr>
-                  <td className="border border-gray-100 p-0 text-center" colSpan={3}>
-                    SGST @ 9%
-                  </td>
-                  <td className="border border-gray-100 p-0 text-center pr-4">{fmt2(sgstAmount)}</td>
+                <tr style={{ border: '1px solid #cccccc' }}>
+                  <td className="p-1 text-[6px] text-center" style={{
+                    padding: '3px 6px',
+                    fontSize: '8px',
+                    border: '1px solid #cccccc',
+                    textAlign: 'center',
+                    backgroundColor: '#ffffff'
+                  }}><span style={{fontWeight:'bold'}}>SGST @ 9%</span></td>
+                  <td className="p-1 text-[6px] text-center" style={{
+                    padding: '3px 6px',
+                    fontSize: '8px',
+                    border: '1px solid #cccccc',
+                    textAlign: 'center',
+                    backgroundColor: '#ffffff',
+                    whiteSpace: 'nowrap'
+                  }}>{fmt2(sgstAmount)}</td>
                 </tr>
               </>
-            )}
-
-            {isIndian && !isTelangana && (
-              <tr>
-                <td className="border border-gray-100 p-0 text-center" colSpan={3}>
-                  IGST @ 18%
-                </td>
-                <td className="border border-gray-100 p-0 text-center pr-4">{fmt2(igstAmount)}</td>
+            ) : (
+              <tr style={{ border: '1px solid #cccccc' }}>
+                <td className="p-1 text-[6px] text-center" style={{
+                  padding: '3px 6px',
+                  fontSize: '8px',
+                  border: '1px solid #cccccc',
+                  textAlign: 'center',
+                  backgroundColor: '#ffffff'
+                }}><span style={{fontWeight:'bold'}}>IGST @ {isIndian ? '18%' : '0%'}</span></td>
+                <td className="p-1 text-[6px] text-center" style={{
+                  padding: '3px 6px',
+                  fontSize: '8px',
+                  border: '1px solid #cccccc',
+                  textAlign: 'center',
+                  backgroundColor: '#ffffff',
+                  whiteSpace: 'nowrap'
+                }}>{fmt2(igstAmount)}</td>
               </tr>
             )}
 
-            {!isIndian && (
-              <tr>
-                <td className="border border-gray-100 p-0 text-center" colSpan={3}>
-                  IGST @ 0%
-                </td>
-                <td className="border border-gray-100 p-0 text-center pr-4">{fmt2(igstAmount)}</td>
-              </tr>
-            )}
+            <tr className="font-bold" style={{ border: '1px solid #cccccc' }}>
+               <td className="p-1 text-[6px] text-center" style={{
+                 padding: '3px 6px',
+                 fontSize: '8px',
+                 border: '1px solid #cccccc',
+                 color: '#000000',
+                 fontWeight: 'bold',
+                 textAlign: 'center',
+                 backgroundColor: '#ffffff'
+               }}>Total</td>
+               <td className="p-1 text-[6px] text-center" style={{
+                 padding: '3px 6px',
+                 fontSize: '8px',
+                 border: '1px solid #cccccc',
+                 color: '#000000',
+                 fontWeight: 'bold',
+                 textAlign: 'center',
+                 backgroundColor: '#ffffff',
+                 whiteSpace: 'nowrap'
+               }}>{fmt2(total)}</td>
+             </tr>
 
-            {/* Total */}
-            <tr className="font-bold">
-              <td className="border border-gray-100 p-0 text-center text-[#3b5998]" colSpan={3}>
-                Total
-              </td>
-              <td className="border border-gray-100 p-0 text-center pr-4 text-[#3b5998]">
-                {fmt2(total)}
-              </td>
-            </tr>
-
-            {/* Words row (uses new converter) */}
-            <tr>
-              <td className="border border-gray-100 p-0 text-center" colSpan={3}>
-                <span className="italic">(Total Amount In Words)</span>
-              </td>
-              <td className="border border-gray-100 p-0 text-center pr-4">
-                {numberToWordsINR(total)}
-              </td>
+            {/* Amount in words row: label in column 3 and words in column 4 */}
+            <tr style={{ border: '1px solid #cccccc' }}>
+              <td className="p-1 text-[6px] text-center" colSpan={2} style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}></td>
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}><span className="italic" style={{fontWeight:'bold'}}>(Total Amount In Words)</span></td>
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'left',
+                backgroundColor: '#ffffff'
+              }}>{numberToWordsINR(total)}</td>
             </tr>
           </tbody>
         </table>
 
-        {/* Bank Details */}
-        <h2 className="font-semibold mb-2" style={{ color: headingColor }}>
-          Bank Details
+        {/* Bank Details - Enhanced styling with consistent format */}
+        <h2 className="font-semibold mb-3 text-[14px]" style={{ color: headingColor, fontSize: '14px', marginBottom: '12px', marginTop: '16px', fontFamily: 'Calibri, sans-serif' }}>
+           Bank Details
         </h2>
-        <table className="w-full border border-gray-100 border-collapse mb-1 text-center">
+        <table className="w-full border-collapse mb-3 text-center" style={{ marginBottom: '12px', fontSize: '10px', border: '1px solid #cccccc', backgroundColor: '#ffffff', fontFamily: 'Calibri, sans-serif' }}>
           <tbody>
-            <tr>
-              <td className="border border-gray-100 p-0 w-1/3">Bank Name</td>
-              <td className="border border-gray-100 p-0">Yes Bank</td>
+            <tr style={{ border: '1px solid #cccccc' }}>
+              <td className="p-1 text-[6px] w-1/3 text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                fontWeight: 'bold',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}>Bank Name</td>
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}>Yes Bank</td>
             </tr>
-            <tr>
-              <td className="border border-gray-100 p-0">Beneficiary Name</td>
-              <td className="border border-gray-100 p-0">{isWT ? "Walls And Trends" : "Walls And Trends"}</td>
+            <tr style={{ border: '1px solid #cccccc' }}>
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                fontWeight: 'bold',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}>Beneficiary Name</td>
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}>{isWT ? "Walls And Trends" : "Walls And Trends"}</td>
             </tr>
-            <tr>
-              <td className="border border-gray-100 p-0">Account Number</td>
-              <td className="border border-gray-100 p-0">000663300001713</td>
+            <tr style={{ border: '1px solid #cccccc' }}>
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                fontWeight: 'bold',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}>Account Number</td>
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}>000663300001713</td>
             </tr>
-            <tr>
-              <td className="border border-gray-100 p-0">Account Type</td>
-              <td className="border border-gray-100 p-0">Current Account</td>
+            <tr style={{ border: '1px solid #cccccc' }}>
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                fontWeight: 'bold',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}>Account Type</td>
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}>Current Account</td>
             </tr>
-            <tr>
-              <td className="border border-gray-100 p-0">IFSC Code</td>
-              <td className="border border-gray-100 p-0">YESB0000006</td>
+            <tr style={{ border: '1px solid #cccccc' }}>
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                fontWeight: 'bold',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}>IFSC Code</td>
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}>YESB0000006</td>
             </tr>
-            <tr>
-              <td className="border border-gray-100 p-0">Bank Branch</td>
-              <td className="border border-gray-100 p-0">Somajiguda</td>
+            <tr style={{ border: '1px solid #cccccc' }}>
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                fontWeight: 'bold',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}>Bank Branch</td>
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}>Somajiguda</td>
             </tr>
-            <tr>
-              <td className="border border-gray-100 p-0">City</td>
-              <td className="border border-gray-100 p-0">Hyderabad</td>
+            <tr style={{ border: '1px solid #cccccc' }}>
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                fontWeight: 'bold',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}>City</td>
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}>Hyderabad</td>
             </tr>
           </tbody>
         </table>
 
-        <p>NOTE: No files will be delivered until the final payment is made.</p>
+        <p style={{ fontSize: '8px', marginBottom: '8px' }}>NOTE: No files will be delivered until the final payment is Done.</p>
 
-        <div className="flex justify-start mt-10">
+        <div className="flex justify-start" style={{ marginTop: '12px' }}>
           <div className="text-center">
-            <img src="/csh-sign.PNG" alt="Signature" className="h-12 mx-auto mb-1" />
-            <p className="text-xs">Authorised Signature for Walls & Trends</p>
+            <img src="/csh-sign.PNG" alt="Signature" className="h-8 mx-auto mb-1" style={{ height: '32px' }} />
+            <p className="text-[6px]" style={{ fontSize: '8px', color: '#9ca3af' }}>Authorised Signature for Walls & Trends</p>
           </div>
         </div>
 
-        <div className="flex justify-end mt-10">
+        <div className="flex justify-end" style={{ marginTop: '12px' }}>
           <div className="text-right">
-            <p className="text-xs italic text-[#3b5998]">Authenticity Promised. Creativity Published</p>
-            <p className="text-xs italic text-[#3b5998]">Thank you for your business!</p>
+            <p className="text-[8px] italic" style={{
+              fontSize: '8px',
+              color: headingColor,
+              fontFamily: 'calibri, sans-serif',
+              fontStyle: 'italic'
+            }}>Authenticity Promised. Creativity Published</p>
+            <p className="text-[8px] italic" style={{
+              fontSize: '8px',
+              color: headingColor,
+              fontFamily: 'calibri, sans-serif',
+              fontStyle: 'italic',
+              marginTop: '2px'
+            }}>Thank you for your business!</p>
           </div>
+        </div>
         </div>
       </div>
     </div>

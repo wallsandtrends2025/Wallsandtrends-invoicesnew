@@ -13,7 +13,7 @@ const countriesWithStates = {
   "Nepal": [],
   "Bangladesh": [],
   "Sri Lanka": [],
-  "Pakistan": [],
+  
   "China": [],
   "South Africa": [],
   "Saudi Arabia": [],

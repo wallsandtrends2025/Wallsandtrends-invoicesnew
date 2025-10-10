@@ -1,5 +1,5 @@
 // src/pages/PreviewProject.jsx
-import React, { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
@@ -11,194 +11,204 @@ export default function PreviewProject() {
   const [project, setProject] = useState(null);
   const [clientName, setClientName] = useState("");
 
-  // Helpers
-  const isWTGroup = useMemo(
-    () => (company) => ["WT", "WTPL"].includes(company),
-    []
-  );
-  const isWTXGroup = useMemo(
-    () => (company) => ["WTX", "WTXPL"].includes(company),
-    []
-  );
+  // group helpers
+  const isWTGroup = useMemo(() => (company) => ["WT", "WTPL"].includes(company), []);
+  const isWTXGroup = useMemo(() => (company) => ["WTX", "WTXPL"].includes(company), []);
 
   useEffect(() => {
-    const fetchProject = async () => {
+    (async () => {
       try {
-        const projectRef = doc(db, "projects", id);
-        const snap = await getDoc(projectRef);
+        const ref = doc(db, "projects", id);
+        const snap = await getDoc(ref);
 
         if (!snap.exists()) {
           alert("Project not found!");
           return navigate("/dashboard/all-projects");
         }
 
-        const data = snap.data();
-
-        // Resolve client display
-        let display = data.clientId || "";
-        try {
-          if (data.clientId) {
-            const clientRef = doc(db, "clients", data.clientId);
-            const clientSnap = await getDoc(clientRef);
-            if (clientSnap.exists()) {
-              const c = clientSnap.data();
-              // falls back gracefully if any field missing
-              display = `${c.company_name || ""} — ${c.client_name || data.clientId}`.trim();
-            }
-          }
-        } catch {
-          // keep fallback
-        }
-
-        setClientName(display);
+        const data = { id: snap.id, ...snap.data() };
         setProject(data);
-      } catch (err) {
-        console.error("Failed to load project:", err);
+
+        // resolve client display (Company — Client) but only if company exists
+        if (data.clientId) {
+          try {
+            const cRef = doc(db, "clients", data.clientId);
+            const cSnap = await getDoc(cRef);
+            if (cSnap.exists()) {
+              const c = cSnap.data();
+
+              const company =
+                (c.company_group && String(c.company_group).trim()) ||
+                (c.company_name && String(c.company_name).trim()) ||
+                "";
+
+              const name =
+                (c.client_name && String(c.client_name).trim()) ||
+                "";
+
+              // Build display: "Company — Name" only when company exists; otherwise just Name.
+              const display =
+                name && company
+                  ? `${company} — ${name}`
+                  : (name || data.clientId || "—");
+
+              setClientName(display);
+            } else {
+              setClientName(data.clientId || "—");
+            }
+          } catch {
+            setClientName(data.clientId || "—");
+          }
+        } else {
+          setClientName("—");
+        }
+      } catch (e) {
+        console.error("Failed to load project:", e);
         alert("Failed to load project.");
         navigate("/dashboard/all-projects");
       }
-    };
-
-    fetchProject();
+    })();
   }, [id, navigate]);
 
   if (!project) {
-    return <div style={styles.loading}>Loading...</div>;
+    return (
+      <div className="p-[30px] bg-[#f5f7fb] min-h-screen flex items-center justify-center text-gray-600">
+        Loading…
+      </div>
+    );
   }
+
+  // ---------- helpers ----------
+  const fmt = (v, fallback = "—") =>
+    v === undefined || v === null || String(v).trim() === "" ? fallback : v;
+
+  const fmtDateTime = (ts) => {
+    try {
+      const d = ts?.toDate ? ts.toDate() : ts ? new Date(ts) : null;
+      if (!d || isNaN(d)) return "—";
+      return d.toLocaleString("en-IN", {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return "—";
+    }
+  };
+
+  const formatServices = (services) => {
+    if (!services) return "—";
+
+    if (Array.isArray(services)) {
+      const items = services
+        .flatMap((s) => {
+          if (typeof s === "string") return s.split(/[,|]/g);
+          if (Array.isArray(s?.name)) return s.name;
+          if (typeof s?.name === "string") return s.name.split(/[,|]/g);
+          return s?.serviceName || s?.title || [];
+        })
+        .map((x) => String(x || "").trim())
+        .filter(Boolean);
+      return items.length ? items.join(", ") : "—";
+    }
+
+    if (typeof services === "string") {
+      const parts = services.split(/[,|]/g).map((s) => s.trim()).filter(Boolean);
+      return parts.length ? parts.join(", ") : "—";
+    }
+
+    const guess =
+      services.name ||
+      services.serviceName ||
+      services.title ||
+      "";
+    return fmt(guess);
+  };
 
   const showMovie = isWTGroup(project.company);
   const showBrand = isWTXGroup(project.company);
 
-  // Optional legacy fields (only render if present in doc)
-  const hasInvoices =
-    Array.isArray(project.invoiceLabels) && project.invoiceLabels.length > 0;
-  const hasQuotations =
-    Array.isArray(project.quotationLabels) && project.quotationLabels.length > 0;
+  const projectName = project.projectName || project.project_name;
+
+  const rows = [
+    { label: "Project Name", value: fmt(projectName) },
+    { label: "Company", value: fmt(project.company) },
+    { label: "Client", value: fmt(clientName) },
+    { label: "POC", value: fmt(project.poc) },
+    {
+      label: "Movie / Brand",
+      value: showMovie
+        ? fmt(project.movieName, "—")
+        : showBrand
+        ? fmt(project.brandName, "—")
+        : "—",
+    },
+    { label: "Services", value: formatServices(project.services) },
+    { label: "Created At", value: fmtDateTime(project.createdAt) },
+  ];
+
+  if (Array.isArray(project.invoiceLabels) && project.invoiceLabels.length) {
+    rows.push({
+      label: "Invoices",
+      value: project.invoiceLabels.join(", "),
+    });
+  }
+
+  if (Array.isArray(project.quotationLabels) && project.quotationLabels.length) {
+    rows.push({
+      label: "Quotations",
+      value: project.quotationLabels.join(", "),
+    });
+  }
 
   return (
-    <div style={styles.container}>
-      <h2 style={styles.heading}>Project Preview</h2>
-      <table style={styles.table}>
-        <tbody>
-          {row("Project Name", project.projectName)}
-          {row("Company", project.company)}
-          {row("Client", clientName)}
-          {row("POC", project.poc)}
-          {showMovie && row("Movie Name", project.movieName || "—")}
-          {showBrand && row("Brand Name", project.brandName || "—")}
-          {row(
-            "Services",
-            Array.isArray(project.services) && project.services.length
-              ? <BadgeList items={project.services} />
-              : "—"
-          )}
-          {row(
-            "Created At",
-            project.createdAt?.toDate
-              ? project.createdAt.toDate().toLocaleString()
-              : "—"
-          )}
+    <div className="p-[30px] bg-[#f5f7fb] min-h-screen">
+      <div className="mb-4 bg-[#ffffff] p-[10px] border-curve mb-[30px]">
+        <h2 className="text-xl font-semibold text-gray-800 m-[0]">
+          Project Preview
+        </h2>
+      </div>
 
-          {/* Optional legacy rows (only if your doc already has them) */}
-          {hasInvoices &&
-            row("Invoices", (project.invoiceLabels || []).join(", "))}
-          {hasQuotations &&
-            row("Quotations", (project.quotationLabels || []).join(", "))}
-        </tbody>
-      </table>
+      <div className="bg-[#ffffff] border-curve rounded-xl shadow p-[18px] md:p-[22px]">
+        <div className="overflow-hidden rounded-xl">
+          <table className="border-separate border-spacing-0 w-[100%]">
+            <tbody>
+              {rows.map((r, i) => (
+                <tr
+                  key={r.label}
+                  className={i % 2 === 0 ? "bg-[#F3F7FF]" : "bg-[#ffffff]"}
+                >
+                  <td className="w-[50%] md:w-[35%] px-4 md:px-5 py-3 md:py-3.5 font-semibold text-gray-700 border-b border-[#E7ECF6] p-[10px] border-curve">
+                    {r.label}
+                  </td>
+                  <td className="px-4 md:px-5 py-3 md:py-3.5 text-gray-800 border-b border-[#E7ECF6] p-[10px] w-[50%] border-curve">
+                    {r.value}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-      <div style={styles.buttonWrapper}>
-        <button style={styles.button} onClick={() => navigate(-1)}>
-          Back
-        </button>
-        <button
-          style={{ ...styles.button, backgroundColor: "#28a745", marginLeft: 12 }}
-          onClick={() => navigate(`/dashboard/edit-project/${id}`)}
-        >
-          Edit
-        </button>
+        <div className="mt-5 flex items-center gap-3 mt-[20px]">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="px-4 py-2 rounded-md bg-[#2E53A3] text-[#ffffff] hover:opacity-95 border-0 border-curve w-[100px] h-[40px] mr-[10px]"
+          >
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(`/dashboard/edit-project/${id}`)}
+            className="px-4 py-2 rounded-md bg-[#28a745] text-[#ffffff] hover:opacity-95 border-0 border-curve w-[100px] h-[40px]"
+          >
+            Edit
+          </button>
+        </div>
       </div>
     </div>
   );
 }
-
-function row(label, value) {
-  return (
-    <tr>
-      <td style={styles.label}>{label}</td>
-      <td style={styles.value}>
-        {typeof value === "string" || typeof value === "number" ? value : value}
-      </td>
-    </tr>
-  );
-}
-
-function BadgeList({ items }) {
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-      {items.map((it, idx) => (
-        <span key={idx} style={styles.badge}>{it}</span>
-      ))}
-    </div>
-  );
-}
-
-const styles = {
-  container: {
-    padding: "40px",
-    maxWidth: "780px",
-    margin: "0 auto",
-    fontFamily: "Arial, sans-serif",
-  },
-  heading: {
-    fontSize: "32px",
-    fontWeight: "bold",
-    marginBottom: "30px",
-    textAlign: "center",
-  },
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-    border: "1px solid #ddd",
-    boxShadow: "0 0 10px rgba(0,0,0,0.1)",
-  },
-  label: {
-    padding: "16px",
-    fontWeight: "bold",
-    backgroundColor: "#f7f7f7",
-    borderBottom: "1px solid #ddd",
-    width: "38%",
-  },
-  value: {
-    padding: "16px",
-    borderBottom: "1px solid #ddd",
-    verticalAlign: "top",
-  },
-  badge: {
-    display: "inline-block",
-    padding: "6px 10px",
-    borderRadius: "999px",
-    background: "#111",
-    color: "#fff",
-    fontSize: 12,
-    lineHeight: 1,
-  },
-  buttonWrapper: {
-    textAlign: "center",
-    marginTop: "30px",
-  },
-  button: {
-    padding: "10px 30px",
-    fontSize: "16px",
-    backgroundColor: "#007BFF",
-    color: "#fff",
-    border: "none",
-    borderRadius: "4px",
-    cursor: "pointer",
-  },
-  loading: {
-    textAlign: "center",
-    fontSize: "20px",
-    padding: "50px",
-  },
-};

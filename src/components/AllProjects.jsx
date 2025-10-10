@@ -1,50 +1,65 @@
 // src/pages/AllProjects.jsx
-import React, { useEffect, useMemo, useState } from 'react';
-import { db } from '../firebase';
-import { collection, getDocs, getDoc, deleteDoc, doc } from 'firebase/firestore';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { db } from "../firebase";
+import { collection, getDocs, getDoc, deleteDoc, doc } from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
 
 export default function AllProjects() {
   const [projects, setProjects] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [quotations, setQuotations] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
 
   // pagination (applies to filtered list)
   const [page, setPage] = useState(1);
   // pageSize can be a number or the string 'all'
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(10);
 
   const navigate = useNavigate();
 
+  // --- NEW: to match AllClients popup behaviour
+  const [openMenuForId, setOpenMenuForId] = useState(null);
+
   // ---------- helpers ----------
-  const safeJoin = (items, sep = ', ') => {
+  const safeJoin = (items, sep = ", ") => {
     return (items || [])
-      .map((x) => (typeof x === 'string' ? x : x?.name || ''))
-      .map((s) => String(s || '').trim())
+      .map((x) => (typeof x === "string" ? x : x?.name || ""))
+      .map((s) => String(s || "").trim())
       .filter(Boolean)
-      .join(sep) || '-';
+      .join(sep) || "—";
   };
 
   const formatServices = (services) => {
-    if (!services) return '-';
-    if (typeof services === 'string') {
-      const parts = services.split(/[,|]/g).map((s) => s.trim()).filter(Boolean);
-      return safeJoin(parts, ', ');
+    if (!services) return "—";
+    if (typeof services === "string") {
+      const parts = services
+        .split(/[,|]/g)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      return safeJoin(parts, ", ");
     }
-    if (Array.isArray(services)) return safeJoin(services, ', ');
-    const guess = services.name || services.serviceName || services.title || '';
-    return guess ? guess : '-';
+    if (Array.isArray(services)) return safeJoin(services, ", ");
+    const guess = services.name || services.serviceName || services.title || "";
+    return guess ? guess : "—";
   };
+
+  // --- Helpers borrowed from AllClients ---
+  const formatPocLabel = (s) => {
+    const m = String(s || "").match(/^(.*\S)\s*-?\s*([A-Za-z]{2,}\d{2,})$/);
+    return m ? `${m[1]} - ${m[2]}` : s || "—";
+  };
+
+  // Show the company stored on the client document
+  const getClientCompany = (row) => row?.company_group || row?.company_name || "—";
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const projectSnap = await getDocs(collection(db, 'projects'));
-        const invoiceSnap = await getDocs(collection(db, 'invoices'));
-        const quotationSnap = await getDocs(collection(db, 'quotations'));
+        const projectSnap = await getDocs(collection(db, "projects"));
+        const invoiceSnap = await getDocs(collection(db, "invoices"));
+        const quotationSnap = await getDocs(collection(db, "quotations"));
 
         const invoiceList = invoiceSnap.docs.map((docSnap) => ({
           id: docSnap.id,
@@ -59,38 +74,60 @@ export default function AllProjects() {
           projectSnap.docs.map(async (docSnap) => {
             const project = { id: docSnap.id, ...docSnap.data() };
 
-            // Fetch client name
-            let clientName = '';
+            // Pull client fields from clients/{clientId} like AllClients
+            let clientName = "";
+            let clientPocRaw = "";
+            let clientPoc = "";
+            let clientCompany = "—";
+
             if (project.clientId) {
-              const clientRef = doc(db, 'clients', project.clientId);
-              const clientDoc = await getDoc(clientRef);
-              if (clientDoc.exists()) {
-                const c = clientDoc.data();
-                clientName =
-                  c.name ||
-                  c.companyName ||
-                  c.client_name ||
-                  c.company_name ||
-                  '';
+              try {
+                const clientRef = doc(db, "clients", project.clientId);
+                const clientDoc = await getDoc(clientRef);
+                if (clientDoc.exists()) {
+                  const c = clientDoc.data();
+
+                  // match AllClients: client_name is the canonical field
+                  clientName =
+                    c.client_name ||
+                    c.name ||
+                    c.companyName || // legacy fallback
+                    "";
+
+                  clientPocRaw = c.poc || "";
+                  clientPoc = formatPocLabel(clientPocRaw);
+
+                  // same "Company" logic as AllClients (for the client entity)
+                  clientCompany = getClientCompany(c);
+                }
+              } catch (err) {
+                console.warn("Failed to read client:", project.clientId, err);
               }
             }
 
-            return { ...project, clientName };
+            return {
+              ...project,
+              clientName,
+              clientPoc,     // formatted like "Name - WT120"
+              clientCompany, // resolved from company_group || company_name
+            };
           })
         );
 
         // Sort projects alphabetically by projectName
         const sortedProjects = projectData
-          .filter((p) => (p.projectName || '').trim())
-          .sort((a, b) => (a.projectName || '').localeCompare(b.projectName || ''));
+          .filter((p) => (p.projectName || "").trim())
+          .sort((a, b) =>
+            (a.projectName || "").localeCompare(b.projectName || "")
+          );
 
         setProjects(sortedProjects);
         setInvoices(invoiceList);
         setQuotations(quotationList);
         setPage(1); // reset page on fresh load
       } catch (e) {
-        console.error('Error loading projects:', e);
-        alert('Error loading projects');
+        console.error("Error loading projects:", e);
+        alert("Error loading projects");
       } finally {
         setLoading(false);
       }
@@ -100,15 +137,22 @@ export default function AllProjects() {
   }, []);
 
   const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this project?')) {
-      await deleteDoc(doc(db, 'projects', id));
+    if (window.confirm("Are you sure you want to delete this project?")) {
+      await deleteDoc(doc(db, "projects", id));
       setProjects((prev) => {
         const next = prev.filter((p) => p.id !== id);
         // keep list sorted
-        next.sort((a, b) => (a.projectName || '').localeCompare(b.projectName || ''));
+        next.sort((a, b) =>
+          (a.projectName || "").localeCompare(b.projectName || "")
+        );
         // recalc page bounds if last item on page removed
-        const isShowAllLocal = pageSize === 'all';
-        const nextTotalPages = isShowAllLocal ? 1 : Math.max(1, Math.ceil(next.length / pageSize));
+        const isShowAllLocal = pageSize === "all";
+        const nextTotalPages = isShowAllLocal
+          ? 1
+          : Math.max(
+              1,
+              Math.ceil(next.length / (isShowAllLocal ? next.length || 1 : pageSize))
+            );
         if (page > nextTotalPages) setPage(nextTotalPages);
         return next;
       });
@@ -117,12 +161,13 @@ export default function AllProjects() {
 
   // ----- search + filtered list -----
   const filteredProjects = useMemo(() => {
-    const q = (searchTerm || '').toLowerCase();
+    const q = (searchTerm || "").toLowerCase();
     if (!q) return projects;
     return projects.filter(
       (project) =>
-        (project.projectName || '').toLowerCase().includes(q) ||
-        (project.clientName || '').toLowerCase().includes(q)
+        (project.projectName || "").toLowerCase().includes(q) ||
+        (project.clientName || "").toLowerCase().includes(q) ||
+        (project.clientCompany || "").toLowerCase().includes(q)
     );
   }, [projects, searchTerm]);
 
@@ -133,10 +178,13 @@ export default function AllProjects() {
 
   // ----- pagination calculated from filtered list -----
   const totalRows = filteredProjects.length;
-  const isShowAll = pageSize === 'all';
-  const effectivePageSize = isShowAll ? (totalRows || 1) : pageSize;
+  const isShowAll = pageSize === "all";
+  const effectivePageSize = isShowAll ? totalRows || 1 : pageSize;
 
-  const totalPages = isShowAll ? 1 : Math.max(1, Math.ceil(totalRows / effectivePageSize));
+  const totalPages = Math.max(
+    1,
+    isShowAll ? 1 : Math.ceil(totalRows / effectivePageSize)
+  );
   const startIdx = isShowAll ? 0 : (page - 1) * effectivePageSize;
   const endIdx = isShowAll ? totalRows : Math.min(startIdx + effectivePageSize, totalRows);
 
@@ -152,17 +200,17 @@ export default function AllProjects() {
 
   const statusBadge = (status) => {
     const colorMap = {
-      Paid: 'bg-green-700 text-white',
-      Partial: 'bg-yellow-600 text-white',
-      Pending: 'bg-red-600 text-white',
+      Paid: "bg-green-600 text-white",
+      Partial: "bg-yellow-600 text-white",
+      Pending: "bg-red-600 text-white",
     };
     return (
       <span
         className={`text-xs font-semibold px-3 py-1 rounded-full ${
-          colorMap[status] || 'bg-gray-700 text-white'
+          colorMap[status] || "bg-gray-700 text-white"
         }`}
       >
-        {status || 'N/A'}
+        {status || "N/A"}
       </span>
     );
   };
@@ -180,7 +228,7 @@ export default function AllProjects() {
               <button
                 type="button"
                 title="Click to view"
-                className="underline text-blue-300 hover:text-blue-100"
+                className="underline text-blue-700 hover:text-blue-900"
                 onClick={() => onClick(item)}
               >
                 {label}
@@ -211,7 +259,7 @@ export default function AllProjects() {
     );
   };
 
-  // --------- Round-numbered pager ----------
+  // -------- Round pagination pills (same style as AllClients) --------
   const getVisiblePages = (current, total) => {
     const max = 7;
     if (total <= max) return [...Array(total)].map((_, i) => i + 1);
@@ -221,13 +269,13 @@ export default function AllProjects() {
     const showRightDots = current < total - 3;
 
     pages.push(1);
-    if (showLeftDots) pages.push('dots-left');
+    if (showLeftDots) pages.push("dots-left");
 
     const start = Math.max(2, current - 1);
     const end = Math.min(total - 1, current + 1);
     for (let p = start; p <= end; p++) pages.push(p);
 
-    if (showRightDots) pages.push('dots-right');
+    if (showRightDots) pages.push("dots-right");
     pages.push(total);
     return pages;
   };
@@ -238,37 +286,29 @@ export default function AllProjects() {
       onClick={onClick}
       disabled={disabled}
       className={[
-        'w-9 h-9 rounded-full border flex items-center justify-center text-sm',
+        "w-9 h-9 rounded-full border flex items-center justify-center text-sm transition-colors",
         active
-          ? 'bg-blue-500 text-white border-blue-500'
-          : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100',
-        disabled ? 'opacity-50 cursor-not-allowed hover:bg-white' : 'cursor-pointer',
-      ].join(' ')}
+          ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+          : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100",
+        disabled ? "opacity-50 cursor-not-allowed hover:bg-white" : "cursor-pointer",
+      ].join(" ")}
     >
       {children}
     </button>
   );
 
   const PaginationBar = () => {
-    // hide pager entirely on "Show All"
-    if (isShowAll) return null;
+    if (totalPages <= 1) return null;
     const visible = getVisiblePages(page, totalPages);
     return (
       <div className="flex items-center gap-2">
-        <PagePill
-          disabled={page === 1}
-          onClick={() => setPage(Math.max(1, page - 1))}
-        >
+        <PagePill disabled={page === 1} onClick={() => setPage(Math.max(1, page - 1))}>
           ‹
         </PagePill>
 
         {visible.map((p, i) =>
-          typeof p === 'number' ? (
-            <PagePill
-              key={`${p}-${i}`}
-              active={p === page}
-              onClick={() => setPage(p)}
-            >
+          typeof p === "number" ? (
+            <PagePill key={`${p}-${i}`} active={p === page} onClick={() => setPage(p)}>
               {p}
             </PagePill>
           ) : (
@@ -288,30 +328,42 @@ export default function AllProjects() {
     );
   };
 
-  // --- Top-right controls (stacked)
+  // Close open menu on ESC / scroll (same as AllClients)
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && setOpenMenuForId(null);
+    const onScroll = () => setOpenMenuForId(null);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, []);
+
+  // --- Top-right controls (same component style as AllClients)
   const TopRightControls = () => (
     <div className="flex flex-col items-end gap-2 ml-auto">
       <div className="flex items-center gap-2">
-        <label className="text-sm text-gray-700">Items per page:</label>
+        <label className="text-sm text-gray-600">Items per page:</label>
         <select
           value={String(pageSize)}
           onChange={(e) => {
-            const v = e.target.value === 'all' ? 'all' : Number(e.target.value);
+            const v = e.target.value === "all" ? "all" : Number(e.target.value);
             setPageSize(v);
             setPage(1);
           }}
-          className="border p-1 rounded"
+          className="border border-gray-300 text-gray-700 bg-white rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           {[10, 25, 50, 100].map((n) => (
             <option key={n} value={n}>
               {n}
             </option>
           ))}
-          <option value="all">Show All</option>
+          <option value="all">Show all</option>
         </select>
       </div>
 
-      <span className="text-sm text-gray-700">
+      <span className="text-sm text-gray-600">
         Showing <strong>{totalRows ? (isShowAll ? 1 : startIdx + 1) : 0}</strong>–
         <strong>{isShowAll ? totalRows : endIdx}</strong> of <strong>{totalRows}</strong>
       </span>
@@ -319,95 +371,150 @@ export default function AllProjects() {
   );
 
   return (
-    <div className="p-6 min-h-screen bg-gray-100 all-projects-block">
-      <div className="max-w-7xl mx-auto bg-white shadow-md rounded-xl p-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">All Projects</h2>
+    <div className="p-[30px] bg-[#f5f7fb] min-h-screen">
+      {/* Title bar (same as AllClients) */}
+      <div className="mb-4 bg-[#ffffff] p-[10px] border-curve">
+        <h2 className="text-xl font-semibold text-gray-800 m-[0]">All Projects</h2>
+      </div>
+
+      {/* Search + Top controls row */}
+      <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+        <div className="w-full md:w-1/3">
           <input
             type="text"
-            placeholder="Search by project or client"
+            placeholder="Search by project, client, or client company"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="mt-4 md:mt-0 px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-black w-full md:w-1/3"
+            className="px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full bg-white text-gray-800"
           />
         </div>
+        <TopRightControls />
+      </div>
 
-        {/* Top-right items-per-page control */}
-        <div className="flex justify-end my-4">
-          <TopRightControls />
+      {loading ? (
+        <div className="bg-white rounded-xl shadow p-8 text-center text-gray-500">
+          Loading...
         </div>
-
-        {loading ? (
-          <p className="text-center text-gray-500 py-10">Loading…</p>
-        ) : totalRows === 0 ? (
-          <p className="text-center text-gray-500 py-10">No projects found.</p>
-        ) : (
-          <>
-            <div className="relative overflow-x-auto max-h-[600px] overflow-y-auto mt-2 rounded-lg">
-              <table className="min-w-full text-sm text-white bg-black rounded-lg min-w-[1200px]">
-                <thead className="bg-gray-900 sticky top-0 z-10 text-white">
-                  <tr>
-                    <th className="px-6 py-3 font-semibold border border-gray-800 text-left">Project Name</th>
-                    <th className="px-6 py-3 font-semibold border border-gray-800 text-left">Company</th>
-                    <th className="px-6 py-3 font-semibold border border-gray-800 text-left">Client</th>
-                    <th className="px-6 py-3 font-semibold border border-gray-800 text-left">POC</th>
-                    <th className="px-6 py-3 font-semibold border border-gray-800 text-left">Movie / Brand</th>
-                    <th className="px-6 py-3 font-semibold border border-gray-800 text-left">Services</th>
-                    <th className="px-6 py-3 font-semibold border border-gray-800 text-left">Payment</th>
-                    <th className="px-6 py-3 font-semibold border border-gray-800 text-center">Invoices</th>
-                    <th className="px-6 py-3 font-semibold border border-gray-800 text-center">Quotations</th>
-                    <th className="px-6 py-3 font-semibold border border-gray-800 text-center">Actions</th>
+      ) : totalRows === 0 ? (
+        <div className="bg-white rounded-xl shadow p-8 text-center text-gray-500">
+          No projects found.
+        </div>
+      ) : (
+        <>
+          {/* Card with table — matches AllClients visual style */}
+          <div className="bg-[#ffffff] p-[30px] border-curve rounded-xl shadow overflow-hidden mt-[20px]">
+            <div className="relative overflow-x-auto table-height overflow-y-auto border border-[#AAAAAA] rounded-lg border-curve">
+              <table className="min-w-full border-collapse text-sm text-gray-700 border-curve">
+                <thead className="bg-[#F1F1F1] text-gray-700 sticky top-0 z-10">
+                  <tr className="divide-x divide-[#AAAAAA] text-[#808080] p-[10px]">
+                    {[
+                      "Project Name",
+                      "Company",
+                      "Client",
+                      "POC",
+                      "Movie / Brand",
+                      "Services",
+                      "Payment",
+                      "Invoices",
+                      "Quotations",
+                      "Actions",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        className="px-6 py-4 font-semibold text-sm text-center p-[10px]"
+                      >
+                        {h}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
+
                 <tbody>
                   {pagedProjects.map((project, index) => (
                     <tr
                       key={project.id}
-                      className={`${index % 2 === 0 ? 'bg-gray-950' : 'bg-black'} hover:bg-gray-800 transition`}
+                      className={`transition-colors divide-x divide-[#AAAAAA] ${
+                        index % 2 === 0 ? "bg-white" : "bg-[#F9F9F9]"
+                      } hover:bg-gray-50`}
                     >
-                      <td className="px-6 py-3 border border-gray-800">{project.projectName}</td>
-                      <td className="px-6 py-3 border border-gray-800">{project.company || '-'}</td>
-                      <td className="px-6 py-3 border border-gray-800">{project.clientName || '-'}</td>
-                      <td className="px-6 py-3 border border-gray-800">{project.poc || '-'}</td>
-                      <td className="px-6 py-3 border border-gray-800">
-                        {['WT', 'WTPL'].includes(project.company)
-                          ? project.movieName || '-'
-                          : ['WTX', 'WTXPL'].includes(project.company)
-                          ? project.brandName || '-'
-                          : '-'}
+                      <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap p-[10px]">
+                        {project.projectName}
                       </td>
-                      <td className="px-6 py-3 border border-gray-800">
+
+                      {/* Internal company (WT/WTPL/WTX/WTXPL) */}
+                      <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap p-[10px]">
+                        {project.company || "—"}
+                      </td>
+
+                      {/* Client name (and optional client company suffix) */}
+                      <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap p-[10px]">
+                        {project.clientName ? `${project.clientName}` : "—"}
+                        {/* Uncomment to show client's company next to the name */}
+                        {project.clientCompany && project.clientCompany !== "—" ? (
+                          <span className="text-gray-500"> — {project.clientCompany}</span>
+                        ) : null}
+                      </td>
+
+                      {/* POC formatted like AllClients */}
+                      <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap p-[10px]">
+                        {project.clientPoc || formatPocLabel(project.poc) || "—"}
+                      </td>
+
+                      <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap p-[10px]">
+                        {["WT", "WTPL"].includes(project.company)
+                          ? project.movieName || "—"
+                          : ["WTX", "WTXPL"].includes(project.company)
+                          ? project.brandName || "—"
+                          : "—"}
+                      </td>
+
+                      <td className="px-6 py-4 text-sm text-gray-800 p-[10px]">
                         {formatServices(project.services)}
                       </td>
-                      <td className="px-6 py-3 border border-gray-800">
+
+                      <td className="px-6 py-4 text-sm text-gray-800 text-center whitespace-nowrap p-[10px]">
                         {statusBadge(project.paymentStatus)}
                       </td>
-                      <td className="px-6 py-3 text-center border border-gray-800">
+
+                      <td className="px-6 py-4 text-sm text-gray-800 text-center p-[10px]">
                         {renderProjectInvoices(project.id)}
                       </td>
-                      <td className="px-6 py-3 text-center border border-gray-800">
+
+                      <td className="px-6 py-4 text-sm text-gray-800 text-center p-[10px]">
                         {renderProjectQuotations(project.id)}
                       </td>
-                      <td className="px-6 py-3 border border-gray-800">
-                        <div className="flex justify-center items-center gap-x-2">
-                          <button
-                            onClick={() => navigate(`/dashboard/edit-project/${project.id}`)}
-                            className="bg-blue-500 hover:bg-blue-600 text-white text-xs px-3 py-1 rounded edit"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDelete(project.id)}
-                            className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1 rounded edit"
-                          >
-                            Delete
-                          </button>
-                          <button
-                            onClick={() => navigate(`/dashboard/project-preview/${project.id}`)}
-                            className="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1 rounded edit"
-                          >
-                            Preview
-                          </button>
+
+                      {/* Actions with 3-dots + bubble (same as AllClients) */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="relative">
+                          <DotsMenu
+                            isOpen={openMenuForId === project.id}
+                            onToggle={() =>
+                              setOpenMenuForId((prev) =>
+                                prev === project.id ? null : project.id
+                              )
+                            }
+                            renderBubble={(anchorRef) =>
+                              openMenuForId === project.id ? (
+                                <RowActionsBubble
+                                  anchorRef={anchorRef}
+                                  onClose={() => setOpenMenuForId(null)}
+                                  onEdit={() => {
+                                    setOpenMenuForId(null);
+                                    navigate(`/dashboard/edit-project/${project.id}`);
+                                  }}
+                                  onDelete={async () => {
+                                    setOpenMenuForId(null);
+                                    await handleDelete(project.id);
+                                  }}
+                                  onPreview={() => {
+                                    setOpenMenuForId(null);
+                                    navigate(`/dashboard/project-preview/${project.id}`);
+                                  }}
+                                />
+                              ) : null
+                            }
+                          />
                         </div>
                       </td>
                     </tr>
@@ -415,13 +522,113 @@ export default function AllProjects() {
                 </tbody>
               </table>
             </div>
+          </div>
 
-            {/* Bottom-right round pager (hidden when Show All) */}
-            <div className="flex justify-end my-6">
+          {/* Bottom pagination bar (hidden automatically when totalPages <= 1) */}
+          {pageSize !== "all" && (
+            <div className="flex justify-end mt-6">
               <PaginationBar />
             </div>
-          </>
-        )}
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* -------------------- Helpers: Dots trigger & Bubble (same as AllClients) -------------------- */
+
+function DotsMenu({ isOpen, onToggle, renderBubble }) {
+  const btnRef = useRef(null);
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={onToggle}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        className="inline-flex items-center justify-center w-9 h-9 rounded-full border-[0] bg-[#ffffff] text-gray-600 hover:bg-gray-100 transition cursor-pointer"
+        title="Actions"
+      >
+        {/* vertical three dots */}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="12" cy="5" r="2" />
+          <circle cx="12" cy="12" r="2" />
+          <circle cx="12" cy="19" r="2" />
+        </svg>
+      </button>
+
+      {isOpen && renderBubble(btnRef)}
+    </>
+  );
+}
+
+function RowActionsBubble({ onEdit, onDelete, onPreview, anchorRef, onClose }) {
+  const bubbleRef = useRef(null);
+
+  useEffect(() => {
+    const onClick = (e) => {
+      if (!bubbleRef.current) return;
+      if (
+        !bubbleRef.current.contains(e.target) &&
+        !anchorRef.current?.contains(e.target)
+      ) {
+        onClose?.();
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [anchorRef, onClose]);
+
+  // Compute position relative to the anchor
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  useEffect(() => {
+    const rect = anchorRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const GAP_Y = 56; // how far above the dots
+    const BUBBLE_W = 360; // approximate width
+    const top = rect.top + window.scrollY - GAP_Y;
+    const left = Math.max(
+      12,
+      rect.left + window.scrollX - (BUBBLE_W - rect.width) + 8
+    );
+    setPos({ top, left });
+  }, [anchorRef]);
+
+  return (
+    <div
+      ref={bubbleRef}
+      style={{
+        position: "fixed",
+        top: pos.top - window.scrollY,
+        left: pos.left - window.scrollX,
+        width: 360,
+        zIndex: 50,
+      }}
+    >
+      <div className="relative">
+        {/* Bubble */}
+        <div className="rounded-full shadow-lg px-4 py-3 flex items-center gap-5 editpopup">
+          <button
+            onClick={onEdit}
+            className="px-4 py-1.5 bg-[#ffffff] text-[#2E53A3] rounded-md text-sm font-medium hover:bg-gray-100 transition m-[5px] border-curve p-[5px] border-0 cursor-pointer"
+          >
+            Edit
+          </button>
+          <button
+            onClick={onDelete}
+            className="px-4 py-1.5 bg-[#ffffff] text-[#2E53A3] rounded-md text-sm font-medium hover:bg-gray-100 transition m-[5px] border-curve p-[5px] border-0 cursor-pointer"
+          >
+            Delete
+          </button>
+          <button
+            onClick={onPreview}
+            className="px-4 py-1.5 bg-[#ffffff] text-[#2E53A3] rounded-md text-sm font-medium hover:bg-gray-100 transition m-[5px] border-curve p-[5px] border-0 cursor-pointer"
+          >
+            Preview
+          </button>
+        </div>
       </div>
     </div>
   );

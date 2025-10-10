@@ -7,22 +7,29 @@ import { useNavigate } from "react-router-dom";
 
 export default function AddProject() {
   const [projectName, setProjectName] = useState("");
-  const [selectedClient, setSelectedClient] = useState(null);
-  const [company, setCompany] = useState("WT");
+  const [company, setCompany] = useState("");
   const [movieName, setMovieName] = useState("");
   const [brandName, setBrandName] = useState("");
+  const [selectedClient, setSelectedClient] = useState(null);
   const [poc, setPoc] = useState("");
   const [selectedServices, setSelectedServices] = useState([]);
   const [clientsData, setClientsData] = useState({});
+  const [errors, setErrors] = useState({
+    projectName: "",
+    company: "",
+    movieName: "",
+    brandName: "",
+    client: "",
+    poc: "",
+  });
   const navigate = useNavigate();
 
-  // ----- POC options by company GROUP -----
+  // ----- POC options by company -----
   const WT_WTPL_POCs = [
     "Suryadevara Veda sai Krishna WT120",
     "Koduru Abhilash Reddy WT146",
     "Sajja Seshasai WT131",
   ];
-
   const WTX_WTXPL_POCs = [
     "Lingareddy Navya WT122",
     "Rohith Gali WT259",
@@ -38,27 +45,26 @@ export default function AddProject() {
   // Format POC as "Name - WT###"
   const formatPoc = (entry) => {
     const parts = entry.split(" ");
-    const code = parts.pop(); // last part = WT###
+    const code = parts.pop();
     const name = parts.join(" ");
     return `${name} - ${code}`;
   };
 
-  const pocByGroup = {
-    WT_WTPL: WT_WTPL_POCs.map(formatPoc),
-    WTX_WTXPL: WTX_WTXPL_POCs.map(formatPoc),
+  const pocByCompany = {
+    WT: WT_WTPL_POCs.map(formatPoc),
+    WTPL: WT_WTPL_POCs.map(formatPoc),
+    WTX: WTX_WTXPL_POCs.map(formatPoc),
+    WTXPL: WTX_WTXPL_POCs.map(formatPoc),
   };
 
-  const companyToGroup = (c) =>
-    c === "WT" || c === "WTPL" ? "WT_WTPL" : "WTX_WTXPL";
-
   const currentPocOptions = useMemo(() => {
-    const list = pocByGroup[companyToGroup(company)] || [];
+    const list = pocByCompany[company] || [];
     return list.map((label) => ({ label, value: label }));
   }, [company]);
 
   const mapShortPocToFull = (shortName, comp) => {
     if (!shortName) return "";
-    const list = pocByGroup[companyToGroup(comp)] || [];
+    const list = pocByCompany[comp] || [];
     const lower = shortName.toLowerCase().trim();
     let found = list.find((lbl) => lbl.toLowerCase().startsWith(lower));
     if (found) return found;
@@ -110,23 +116,49 @@ export default function AddProject() {
     fetchClients();
   }, []);
 
-  const matchesCompany = (data, comp) => {
-    if (!data) return false;
-    const compNorm = String(data.company || "").toUpperCase().trim();
-    const group = String(data.company_group || "").toUpperCase().trim();
-    if (compNorm && compNorm === comp) return true;
-    if (group === "WT_WTPL" && (comp === "WT" || comp === "WTPL")) return true;
-    if (group === "WTX_WTXPL" && (comp === "WTX" || comp === "WTXPL")) return true;
+  // Company→Group mapping (WT & WTPL share; WTX & WTXPL share)
+  const companyToGroup = {
+    WT: "WT",
+    WTPL: "WT",
+    WTX: "WTX",
+    WTXPL: "WTX",
+  };
+
+  const normalize = (s) => String(s || "").toUpperCase().trim();
+
+  // STRICT group match: show only the group’s clients; show none until company chosen.
+  const isClientInCompanyGroup = (clientDoc, comp) => {
+    if (!comp) return false; // nothing until a company is selected
+    const targetGroup = companyToGroup[comp];
+    if (!targetGroup) return false;
+
+    const cg = normalize(clientDoc.company_group);
+    const cn = normalize(clientDoc.company_name);
+
+    // Primary: explicit company_group (preferred canonical field)
+    if (cg) return cg === normalize(targetGroup);
+
+    // Fallback: legacy company_name mapping
+    if (targetGroup === "WT") {
+      return cn === "WT" || cn === "WTPL";
+    }
+    if (targetGroup === "WTX") {
+      return cn === "WTX" || cn === "WTXPL";
+    }
+
     return false;
   };
 
   const filteredClientOptions = useMemo(() => {
+    if (!company) return []; // keep empty until company is selected
     return Object.entries(clientsData)
-      .filter(([, data]) => matchesCompany(data, company))
+      .filter(([, data]) => isClientInCompanyGroup(data, company))
       .map(([id, data]) => ({
         value: id,
         label: data.client_name ? data.client_name : id,
-      }));
+      }))
+      // keep alphabetical for nicer UX
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [clientsData, company]);
 
   const handleClientChange = (opt) => {
@@ -137,33 +169,48 @@ export default function AddProject() {
     } else {
       setPoc("");
     }
+    setErrors((prev) => ({ ...prev, client: "" }));
   };
 
-  const handleCompanyChange = (e) => {
-    const next = e.target.value;
-    setCompany(next);
-    setSelectedClient(null);
-    setPoc("");
+  const validate = () => {
+    const next = {
+      projectName: projectName ? "" : "Project Name is required.",
+      company: company ? "" : "Company is required.",
+      client: selectedClient ? "" : "Client is required.",
+      poc: poc ? "" : "POC is required.",
+    };
+
+    if (company === "WT" || company === "WTPL") {
+      next.movieName = movieName ? "" : "Movie Name is required.";
+    } else if (company === "WTX" || company === "WTXPL") {
+      next.brandName = brandName ? "" : "Brand Name is required.";
+    }
+
+    setErrors(next);
+    return !Object.values(next).some(Boolean);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!projectName || !selectedClient || !company || !poc) {
-      alert("Project Name, Client, Company, and POC are required.");
-      return;
-    }
+    if (!validate()) return;
 
     try {
-      await addDoc(collection(db, "projects"), {
+      const projectData = {
         projectName,
-        clientId: selectedClient.value,
         company,
-        movieName: ["WT", "WTPL"].includes(company) ? movieName : "",
-        brandName: ["WTX", "WTXPL"].includes(company) ? brandName : "",
+        clientId: selectedClient.value,
         poc,
         services: selectedServices.map((s) => s.value),
         createdAt: new Date(),
-      });
+      };
+
+      if (company === "WT" || company === "WTPL") {
+        projectData.movieName = movieName;
+      } else if (company === "WTX" || company === "WTXPL") {
+        projectData.brandName = brandName;
+      }
+
+      await addDoc(collection(db, "projects"), projectData);
 
       alert("Project added successfully!");
       navigate("/dashboard/all-projects");
@@ -173,152 +220,230 @@ export default function AddProject() {
     }
   };
 
+  // --- UI helpers ---
+  const inputClass = (hasError) =>
+    `w-full border px-4 py-2 rounded-[10px] ${
+      hasError
+        ? "!border-red-500 !text-red-700 placeholder-red-400 focus:outline-none focus:ring-1 focus:!ring-red-500"
+        : "border-gray-300 text-black focus:outline-none focus:ring-2 focus:ring-gray-200"
+    }`;
+
+  const labelClass = (hasError) =>
+    `block mb-1 font-semibold ${hasError ? "text-red-700" : "text-black"}`;
+
+  const helpText = (msg) =>
+    msg && <p className="text-red-600 text-sm mt-1">{msg}</p>;
+
+  // react-select theme
+  const rsStyles = {
+    control: (base, state) => ({
+      ...base,
+      minHeight: 44,
+      height: 44,
+      borderRadius: 10,
+      borderColor: "#e5e7eb",
+      boxShadow: state.isFocused ? "0 0 0 2px rgba(229,231,235,0.9)" : "none",
+      ":hover": { borderColor: "#e5e7eb" },
+    }),
+    valueContainer: (base) => ({ ...base, height: 44, padding: "0 12px" }),
+    input: (base) => ({ ...base, margin: 0, padding: 0 }),
+    indicatorsContainer: (base) => ({ ...base, height: 44 }),
+    multiValue: (base) => ({ ...base, borderRadius: 6 }),
+    placeholder: (base) => ({ ...base, color: "#9ca3af" }),
+    menu: (base) => ({ ...base, borderRadius: 10, overflow: "hidden" }),
+  };
+
   return (
-    <div style={styles.page}>
-      <form onSubmit={handleSubmit} style={styles.card}>
-        <h2 style={styles.title}>Add New Project</h2>
+    <div className="bg-[#F4F6FF] p-[10px]">
+      <div className="max-w-6xl mx-auto">
+        {/* Title chip */}
+        <div className="bg-[#ffffff] shadow-sm mb-4 p-[15px] border-curve mb-[20px]">
+          <h2 className="font-semibold text-[#000000] m-[0]">Add New Project</h2>
+        </div>
 
-        <label style={styles.label}>Select Company</label>
-        <select
-          value={company}
-          onChange={handleCompanyChange}
-          style={styles.input}
-          required
+        {/* Main form card */}
+        <form
+          onSubmit={handleSubmit}
+          className="bg-[#ffffff] shadow-md rounded-xl p-[15px] md:p-8 max-w-6xl mx-auto border-curve form-block"
+          noValidate
         >
-          <option value="WT">WT</option>
-          <option value="WTPL">WTPL</option>
-          <option value="WTX">WTX</option>
-          <option value="WTXPL">WTXPL</option>
-        </select>
+          <div className="grid grid-cols-2 gap-6">
+            {/* Row 1: Project Name | Company */}
+            <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
+              <label className={labelClass(!!errors.projectName)}>Project Name</label>
+              <input
+                value={projectName}
+                onChange={(e) => {
+                  setProjectName(e.target.value);
+                  if (errors.projectName) setErrors((p) => ({ ...p, projectName: "" }));
+                }}
+                className={`${inputClass(!!errors.projectName)} border-curve`}
+                placeholder="Enter project name"
+                required
+              />
+              {helpText(errors.projectName)}
+            </div>
 
-        <label style={styles.label}>Select Client</label>
-        <Select
-          options={filteredClientOptions}
-          value={selectedClient}
-          onChange={handleClientChange}
-          placeholder="Select Client"
-          isSearchable
-          isClearable
-          noOptionsMessage={() => "No clients for this company"}
-          styles={styles.select}
-        />
+            <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
+              <label className={labelClass(!!errors.company)}>Company</label>
+              <select
+                value={company}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setCompany(next);
+                  setSelectedClient(null);
+                  setPoc("");
+                  setMovieName("");
+                  setBrandName("");
+                  if (errors.company) setErrors((p) => ({ ...p, company: "" }));
+                }}
+                className={`${inputClass(!!errors.company)} border-curve`}
+                required
+              >
+                <option value="">Select Company</option>
+                <option value="WT">WT</option>
+                <option value="WTPL">WTPL</option>
+                <option value="WTX">WTX</option>
+                <option value="WTXPL">WTXPL</option>
+              </select>
+              {helpText(errors.company)}
+            </div>
 
-        <label style={styles.label}>Project Name</label>
-        <input
-          type="text"
-          value={projectName}
-          onChange={(e) => setProjectName(e.target.value)}
-          style={styles.input}
-          required
-        />
+            {/* Row 1.5: Client */}
+            <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
+              <label className={labelClass(!!errors.client)}>Select Client</label>
+              <Select
+                className="border-curve"
+                classNamePrefix="rs"
+                styles={rsStyles}
+                options={filteredClientOptions}
+                value={selectedClient}
+                onChange={handleClientChange}
+                placeholder={company ? "Select Client" : "Select company first"}
+                isSearchable
+                isClearable
+                isDisabled={!company}
+                noOptionsMessage={() =>
+                  company ? "No clients for this company" : "Select company first"
+                }
+              />
+              {helpText(errors.client)}
+            </div>
 
-        {["WT", "WTPL"].includes(company) && (
-          <>
-            <label style={styles.label}>Movie Name</label>
-            <input
-              type="text"
-              value={movieName}
-              onChange={(e) => setMovieName(e.target.value)}
-              style={styles.input}
-            />
-          </>
-        )}
+            {/* Conditional: Movie/Brand | POC */}
+            {(company === "WT" || company === "WTPL") && (
+              <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
+                <label className={labelClass(!!errors.movieName)}>Movie Name</label>
+                <input
+                  value={movieName}
+                  onChange={(e) => {
+                    setMovieName(e.target.value);
+                    if (errors.movieName) setErrors((p) => ({ ...p, movieName: "" }));
+                  }}
+                  className={`${inputClass(!!errors.movieName)} border-curve`}
+                  placeholder="Movie Name (derived from show)"
+                  required
+                />
+                {helpText(errors.movieName)}
+              </div>
+            )}
 
-        {["WTX", "WTXPL"].includes(company) && (
-          <>
-            <label style={styles.label}>Brand Name</label>
-            <input
-              type="text"
-              value={brandName}
-              onChange={(e) => setBrandName(e.target.value)}
-              style={styles.input}
-            />
-          </>
-        )}
+            {(company === "WTX" || company === "WTXPL") && (
+              <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
+                <label className={labelClass(!!errors.brandName)}>Brand Name</label>
+                <input
+                  value={brandName}
+                  onChange={(e) => {
+                    setBrandName(e.target.value);
+                    if (errors.brandName) setErrors((p) => ({ ...p, brandName: "" }));
+                  }}
+                  className={`${inputClass(!!errors.brandName)} border-curve`}
+                  placeholder="Brand Name (from show)"
+                  required
+                />
+                {helpText(errors.brandName)}
+              </div>
+            )}
 
-        <label style={styles.label}>POC</label>
-        <Select
-          options={currentPocOptions}
-          value={poc ? { label: poc, value: poc } : null}
-          onChange={(opt) => setPoc(opt?.value || "")}
-          placeholder='Select POC (e.g., "Lingareddy Navya - WT122")'
-          isSearchable
-          isClearable
-          styles={styles.select}
-        />
+            <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
+              <label className={labelClass(!!errors.poc)}>POC</label>
+              <Select
+                className="border-curve"
+                classNamePrefix="rs"
+                styles={rsStyles}
+                options={currentPocOptions}
+                value={poc ? { label: poc, value: poc } : null}
+                onChange={(opt) => {
+                  setPoc(opt?.value || "");
+                  if (errors.poc) setErrors((p) => ({ ...p, poc: "" }));
+                }}
+                placeholder='Select POC (e.g., "Lingareddy Navya - WT122")'
+                isSearchable
+                isClearable
+                isDisabled={!company}
+              />
+              {helpText(errors.poc)}
+            </div>
 
-        <label style={styles.label}>Select Services</label>
-        <Select
-          isMulti
-          options={serviceOptions}
-          value={selectedServices}
-          onChange={setSelectedServices}
-          placeholder="Select Services"
-          isSearchable
-          styles={styles.select}
-        />
+            {/* Services */}
+            <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
+              <label className={labelClass(false)}>Select Services</label>
+              <Select
+                isMulti
+                className="border-curve"
+                classNamePrefix="rs"
+                styles={rsStyles}
+                options={serviceOptions}
+                value={selectedServices}
+                onChange={setSelectedServices}
+                placeholder="Select Services"
+                isSearchable
+              />
+            </div>
 
-        <button type="submit" style={styles.button}>
-          Submit Project
-        </button>
-      </form>
+            <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">{/* spacer */}</div>
+
+            {/* Submit Buttons */}
+            <div className="col-span-2 flex justify-center items-center pt-[10px] pb-[10px]">
+              <div className="flex gap-3 w-full max-w-[200px]">
+                <button
+                  type="submit"
+                  className="bg-[#3b5997] text-[#ffffff] font-semibold rounded-[10px] flex-1 h-[32px] border-0 hover:bg-[#3b5997] transition-colors"
+                >
+                  Submit Project
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    // Clear all form fields - make the form empty as requested
+                    setProjectName("");
+                    setCompany("");
+                    setMovieName("");
+                    setBrandName("");
+                    setSelectedClient(null);
+                    setPoc("");
+                    setSelectedServices([]);
+                    setErrors({
+                      projectName: "",
+                      company: "",
+                      movieName: "",
+                      brandName: "",
+                      client: "",
+                      poc: "",
+                    });
+                    console.log("Clear Form button clicked - form cleared");
+                    alert("Form has been cleared!");
+                  }}
+                  className="bg-[#3b5997] text-[#ffffff] font-semibold rounded-[10px] flex-1 h-[32px] border-0 hover:bg-[#3b5997] transition-colors"
+                >
+                  Clear Form
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
-
-const styles = {
-  page: {
-    minHeight: "100vh",
-    backgroundColor: "#f3f4f6",
-    display: "flex",
-    justifyContent: "center",
-    padding: "2rem",
-  },
-  card: {
-    background: "#fff",
-    padding: "30px",
-    borderRadius: "10px",
-    maxWidth: "700px",
-    width: "100%",
-    boxShadow: "0 4px 10px rgba(0,0,0,0.1)",
-  },
-  title: {
-    fontSize: "24px",
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: "30px",
-  },
-  label: {
-    fontWeight: "600",
-    marginBottom: "6px",
-    display: "block",
-  },
-  input: {
-    width: "100%",
-    padding: "10px",
-    borderRadius: "5px",
-    border: "1px solid #ccc",
-    marginBottom: "20px",
-  },
-  button: {
-    width: "100%",
-    padding: "15px",
-    backgroundColor: "#000",
-    color: "#fff",
-    border: "none",
-    borderRadius: "6px",
-    fontWeight: "bold",
-    fontSize: "16px",
-    marginTop: "20px",
-    cursor: "pointer",
-  },
-  select: {
-    control: (provided) => ({
-      ...provided,
-      borderRadius: "5px",
-      padding: "2px",
-      borderColor: "#ccc",
-      marginBottom: "20px",
-    }),
-  },
-};

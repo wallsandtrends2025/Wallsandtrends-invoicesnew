@@ -102,14 +102,22 @@ export async function generateAndSaveBothPDFsToFirestore(invoiceData, clientData
  */
 export async function downloadPDFFromFirestore(pdfDocId) {
   try {
+    console.log('📥 Downloading PDF from Firestore...', { pdfDocId });
+
     const pdfDoc = await getDoc(doc(db, "invoice_pdfs", pdfDocId));
-    
+
     if (!pdfDoc.exists()) {
       throw new Error('PDF not found');
     }
-    
+
     const pdfData = pdfDoc.data();
-    
+
+    console.log('✅ PDF found in Firestore, preparing download...', {
+      filename: pdfData.filename,
+      size: pdfData.size,
+      type: pdfData.type
+    });
+
     // Create download link
     const link = document.createElement('a');
     link.href = pdfData.pdfBase64;
@@ -117,7 +125,9 @@ export async function downloadPDFFromFirestore(pdfDocId) {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
+
+    console.log('✅ PDF downloaded successfully from Firestore!', { filename: pdfData.filename });
+
   } catch (error) {
     console.error('Error downloading PDF from Firestore:', error);
     throw error;

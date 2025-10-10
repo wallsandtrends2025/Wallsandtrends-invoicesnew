@@ -472,8 +472,11 @@ export default function AuditManager() {
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '900px', margin: '0 auto' }}>
-      <h2>🏢 Company TAX Invoice Audit Management</h2>
+    <div style={{ padding: '20px', margin: '0 auto' }} className=''>
+      <div className='bg-[#ffffff] border-curve p-[20px] mb-[20px]'>
+      <h2  className="font-semibold text-[#000000] m-[0]">Audit Management</h2>
+      </div>
+      <div className='bg-[#ffffff] border-curve p-[20px]'>
       <p style={{ color: '#666', marginBottom: '20px' }}>
         Professional automated system for monthly TAX invoice audit delivery.
       </p>
@@ -712,6 +715,7 @@ export default function AuditManager() {
           </div>
         )}
       </div>
+    </div>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+// src/pages/InvoiceSummary.jsx
 import { useState, useEffect, useCallback } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
@@ -20,7 +21,7 @@ export default function InvoiceSummary() {
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState("");       // "" | Pending | Paid | Partial
   const [selectedGstPaymentStatus, setSelectedGstPaymentStatus] = useState(""); // "" | Pending | Paid | Partial | NA
 
-  // Totals (overall totals for filtered dataset)
+  // Totals
   const [totalSubtotal, setTotalSubtotal] = useState(0);
   const [totalTax, setTotalTax] = useState(0);
   const [totalAmount, setTotalAmount] = useState(0);
@@ -29,8 +30,7 @@ export default function InvoiceSummary() {
 
   // ---------- pagination ----------
   const [page, setPage] = useState(1);
-  // can be a number or 'all'
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(10); // number | 'all'
 
   const totalRows = summaryData.length;
   const isShowAll = pageSize === "all";
@@ -42,7 +42,6 @@ export default function InvoiceSummary() {
 
   const goToPage = (p) => setPage(Math.min(Math.max(1, p), totalPages));
 
-  // keep page in range if data/pageSize changes
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
@@ -103,7 +102,6 @@ export default function InvoiceSummary() {
     }, null);
 
     if (latestFromList?.at) return latestFromList.at;
-
     for (const f of fallbacks) {
       if (inv?.[f]) return inv[f];
     }
@@ -278,10 +276,10 @@ export default function InvoiceSummary() {
       onClick={onClick}
       disabled={disabled}
       className={[
-        "w-9 h-9 rounded-full border flex items-center justify-center text-sm",
+        "w-9 h-9 rounded-full border flex items-center justify-center text-sm transition-colors",
         active
-          ? "bg-blue-500 text-white border-blue-500"
-          : "bg-white text-gray-600 border-gray-300 hover:bg-gray-100",
+          ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+          : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100",
         disabled ? "opacity-50 cursor-not-allowed hover:bg-white" : "cursor-pointer",
       ].join(" ")}
     >
@@ -321,7 +319,7 @@ export default function InvoiceSummary() {
             setPageSize(v);
             setPage(1);
           }}
-          className="border p-1 rounded"
+          className="border border-gray-300 text-gray-700 bg-white rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           {[10, 25, 50, 100].map((n) => (
             <option key={n} value={n}>{n}</option>
@@ -337,133 +335,150 @@ export default function InvoiceSummary() {
     </div>
   );
 
+  // ---------- small formatter helpers ----------
+  const badge = (status) => {
+    const map = {
+      Paid: "bg-green-100 text-green-800",
+      Pending: "bg-red-100 text-red-800",
+      Partial: "bg-yellow-100 text-yellow-800",
+      NA: "bg-gray-100 text-gray-800",
+    };
+    const cls = map[status] || "bg-gray-100 text-gray-800";
+    return <span className={`px-2 py-1 rounded-full text-xs font-semibold ${cls}`}>{status || "—"}</span>;
+  };
+
   return (
-    <div className="bg-white p-6 rounded shadow-md invoice-summary">
-      <h2 className="text-2xl font-bold mb-6">Invoice Report</h2>
+    <div className="p-[30px] bg-[#f5f7fb] min-h-screen">
+      {/* Title bar (same style as other pages) */}
+      <div className="mb-4 bg-[#ffffff] p-[10px] border-curve">
+        <h2 className="text-xl font-semibold text-gray-800 m-[0]">Invoice Report</h2>
+      </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-4 mb-4">
-        <div className="invoice-summary-cnt">
-          <label>From:</label>
-          <input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            className="border p-2 rounded"
-          />
-          <small className="block text-gray-500">Leave blank to include all</small>
-        </div>
+      {/* Filters row */}
+      <div className=" p-[20px] rounded-xl shadow border-[#E6E6E6] mb-4">
+        <div className="flex flex-wrap gap-4">
+          <div className="flex flex-col invoice-summary-cnt">
+            <label className="text-sm text-gray-700">From</label>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white border-curve"
+            />
+            <small className="text-gray-500">Leave blank to include all</small>
+          </div>
 
-        <div className="invoice-summary-cnt">
-          <label>To:</label>
-          <input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            className="border p-2 rounded"
-          />
-          <small className="block text-gray-500">Leave blank to include all</small>
-        </div>
+          <div className="flex flex-col invoice-summary-cnt">
+            <label className="text-sm text-gray-700">To</label>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white border-curve"
+            />
+            <small className="text-gray-500">Leave blank to include all</small>
+          </div>
 
-        <div className="invoice-summary-cnt">
-          <label>Company:</label>
-          <select
-            value={selectedCompanyGroup}
-            onChange={(e) => {
-              setSelectedCompanyGroup(e.target.value);
-              setSelectedClient("");
-              setSelectedProject("");
-            }}
-            className="border p-2 rounded"
-          >
-            <option value="">All Companies</option>
-            <option value="WT">WT (incl. WTPL)</option>
-            <option value="WTX">WTX (incl. WTXPL)</option>
-          </select>
-        </div>
+          <div className="flex flex-col invoice-summary-cnt min-w-[180px]">
+            <label className="text-sm text-gray-700">Company</label>
+            <select
+              value={selectedCompanyGroup}
+              onChange={(e) => {
+                setSelectedCompanyGroup(e.target.value);
+                setSelectedClient("");
+                setSelectedProject("");
+              }}
+              className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white border-curve"
+            >
+              <option value="">All Companies</option>
+              <option value="WT">WT (incl. WTPL)</option>
+              <option value="WTX">WTX (incl. WTXPL)</option>
+            </select>
+          </div>
 
-        <div className="invoice-summary-cnt">
-          <label>Client:</label>
-          <select
-            value={selectedClient}
-            onChange={(e) => {
-              setSelectedClient(e.target.value);
-              setSelectedProject("");
-            }}
-            className="border p-2 rounded"
-          >
-            <option value="">All Clients</option>
-            {filteredClients.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.client_name || client.company_name || client.companyName}
-              </option>
-            ))}
-          </select>
-        </div>
+          <div className="flex flex-col invoice-summary-cnt min-w-[220px]">
+            <label className="text-sm text-gray-700">Client</label>
+            <select
+              value={selectedClient}
+              onChange={(e) => {
+                setSelectedClient(e.target.value);
+                setSelectedProject("");
+              }}
+              className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white border-curve"
+            >
+              <option value="">All Clients</option>
+              {filteredClients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.client_name || client.company_name || client.companyName}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        <div className="invoice-summary-cnt">
-          <label>Project:</label>
-          <select
-            value={selectedProject}
-            onChange={(e) => setSelectedProject(e.target.value)}
-            className="border p-2 rounded"
-          >
-            <option value="">All Projects</option>
-            {filteredProjects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.project_name || project.projectName}
-              </option>
-            ))}
-          </select>
-        </div>
+          <div className="flex flex-col invoice-summary-cnt min-w-[220px]">
+            <label className="text-sm text-gray-700">Project</label>
+            <select
+              value={selectedProject}
+              onChange={(e) => setSelectedProject(e.target.value)}
+              className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white border-curve"
+            >
+              <option value="">All Projects</option>
+              {filteredProjects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.project_name || project.projectName}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        <div className="invoice-summary-cnt">
-          <label>Payment Status:</label>
-          <select
-            value={selectedPaymentStatus}
-            onChange={(e) => setSelectedPaymentStatus(e.target.value)}
-            className="border p-2 rounded"
-          >
-            <option value="">All</option>
-            <option value="Pending">Pending</option>
-            <option value="Paid">Paid</option>
-            <option value="Partial">Partial</option>
-          </select>
-        </div>
+          <div className="flex flex-col invoice-summary-cnt">
+            <label className="text-sm text-gray-700">Payment Status</label>
+            <select
+              value={selectedPaymentStatus}
+              onChange={(e) => setSelectedPaymentStatus(e.target.value)}
+              className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white border-curve"
+            >
+              <option value="">All</option>
+              <option value="Pending">Pending</option>
+              <option value="Paid">Paid</option>
+              <option value="Partial">Partial</option>
+            </select>
+          </div>
 
-        <div className="invoice-summary-cnt">
-          <label>GST Payment Status:</label>
-          <select
-            value={selectedGstPaymentStatus}
-            onChange={(e) => setSelectedGstPaymentStatus(e.target.value)}
-            className="border p-2 rounded"
-          >
-            <option value="">All</option>
-            <option value="Pending">Pending</option>
-            <option value="Paid">Paid</option>
-            <option value="Partial">Partial</option>
-            <option value="NA">NA</option>
-          </select>
-        </div>
+          <div className="flex flex-col invoice-summary-cnt">
+            <label className="text-sm text-gray-700">GST Payment Status</label>
+            <select
+              value={selectedGstPaymentStatus}
+              onChange={(e) => setSelectedGstPaymentStatus(e.target.value)}
+              className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white border-curve"
+            >
+              <option value="">All</option>
+              <option value="Pending">Pending</option>
+              <option value="Paid">Paid</option>
+              <option value="Partial">Partial</option>
+              <option value="NA">NA</option>
+            </select>
+          </div>
 
-        <div className="invoice-summary-cnt">
-          <label>Quick Select:</label>
-          <select onChange={handlePresetChange} className="border p-2 rounded">
-            <option value="">Select Range</option>
-            <option value="1month">Last 1 Month</option>
-            <option value="3months">Last 3 Months</option>
-            <option value="6months">Last 6 Months</option>
-            <option value="1year">Last 1 Year</option>
-          </select>
-        </div>
+          <div className="flex flex-col invoice-summary-cnt">
+            <label className="text-sm text-gray-700">Quick Select</label>
+            <select onChange={handlePresetChange} className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white border-curve">
+              <option value="">Select Range</option>
+              <option value="1month">Last 1 Month</option>
+              <option value="3months">Last 3 Months</option>
+              <option value="6months">Last 6 Months</option>
+              <option value="1year">Last 1 Year</option>
+            </select>
+          </div>
 
-        <div className="self-end">
-          <button
-            onClick={fetchAndFilter}
-            className="bg-black text-white px-4 py-2 rounded generate-btn"
-          >
-            Generate
-          </button>
+          <div className="self-end">
+            <button
+              onClick={fetchAndFilter}
+              className="bg-[#2E53A3] text-[#ffffff] px-4 py-2 rounded-md hover:bg-[#234482] transition border-curve h-[40px] border-0"
+            >
+              Generate
+            </button>
+          </div>
         </div>
       </div>
 
@@ -473,136 +488,151 @@ export default function InvoiceSummary() {
       </div>
 
       {loading ? (
-        <p>Loading...</p>
+        <div className="bg-white rounded-xl shadow p-8 text-center text-gray-500">
+          Loading...
+        </div>
       ) : (
         <>
           {summaryData.length === 0 ? (
-            <p className="text-gray-600 mt-4">No invoices found for the selected filters.</p>
+            <div className="bg-white rounded-xl shadow p-8 text-center text-gray-500">
+              No invoices found for the selected filters.
+            </div>
           ) : (
-            <div className="relative overflow-x-auto max-h-[600px] overflow-y-auto mt-2">
-              <table className="border-collapse border mt-0 w/full min-w-[2000px]">
-                <thead className="bg-blue-600 text-white sticky top-0 z-10">
-                  <tr>
-                    <th className="border p-2">Invoice ID</th>
-                    <th className="border p-2">Company</th>
-                    <th className="border p-2">Client</th>
-                    <th className="border p-2">Project</th>
-                    <th className="border p-2">Date</th>
-                    <th className="border p-2">Last Updated</th>
-                    <th className="border p-2">Invoice Value</th>
-                    <th className="border p-2">Tax Value</th>
-                    <th className="border p-2">Total Value</th>
-                    <th className="border p-2">Paid Amount</th>
-                    <th className="border p-2">Pending Amount</th>
-                    <th className="border p-2">Invoice Status</th>
-                    <th className="border p-2">GST Payment Status</th>
-                    <th className="border p-2">Last Payment Update</th>
-                    <th className="border p-2">Last GST Update</th>
-                  </tr>
-                </thead>
+            <div className="bg-[#ffffff] p-[30px] border-curve rounded-xl shadow overflow-hidden mt-[10px]">
+              <div className="relative overflow-x-auto table-height overflow-y-auto border border-[#AAAAAA] rounded-lg border-curve">
+                <table className="min-w-full border-collapse text-sm text-gray-700 border-curve min-w-[1400px]">
+                  <thead className="bg-[#F1F1F1] text-gray-700 sticky top-0 z-10">
+                    <tr className="divide-x divide-[#AAAAAA] text-[#808080]">
+                      {[
+                        "Invoice ID",
+                        "Company",
+                        "Client",
+                        "Project",
+                        "Date",
+                        "Last Updated",
+                        "Invoice Value",
+                        "Tax Value",
+                        "Total Value",
+                        "Paid Amount",
+                        "Pending Amount",
+                        "Invoice Status",
+                        "GST Payment Status",
+                        "Last Payment Update",
+                        "Last GST Update",
+                      ].map((h) => (
+                        <th key={h} className="px-6 py-4 font-semibold text-sm text-center p-[10px]">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
 
-                <tbody>
-                  {pagedData.map((inv) => {
-                    const dateObj = inv.invoice_date?.toDate?.() || new Date(inv.invoice_date);
-                    const formattedDate = isNaN(dateObj) ? "-" : dateObj.toISOString().split("T")[0];
+                  <tbody>
+                    {pagedData.map((inv, idx) => {
+                      const dateObj = inv.invoice_date?.toDate?.() || new Date(inv.invoice_date);
+                      const formattedDate = isNaN(dateObj) ? "-" : dateObj.toISOString().split("T")[0];
 
-                    const clientObj = clients.find((c) => c.id === inv.client_id);
-                    const clientName = clientObj?.client_name || clientObj?.company_name || inv.client_id;
+                      const clientObj = clients.find((c) => c.id === inv.client_id);
+                      const clientName = clientObj?.client_name || clientObj?.company_name || inv.client_id;
 
-                    const projObj = projects.find((p) => p.id === inv.project_id);
-                    const projectName = projObj?.project_name || projObj?.projectName || "-";
+                      const projObj = projects.find((p) => p.id === inv.project_id);
+                      const projectName = projObj?.project_name || projObj?.projectName || "-";
 
-                    const companyGroup = getInvoiceCompanyGroup(inv) || "-";
+                      const companyGroup = getInvoiceCompanyGroup(inv) || "-";
 
-                    const invoiceValue = Number(inv.subtotal || 0);
-                    const taxValue = getTaxValue(inv);
-                    const totalValue = Number(inv.total_amount || 0);
+                      const invoiceValue = Number(inv.subtotal || 0);
+                      const taxValue = getTaxValue(inv);
+                      const totalValue = Number(inv.total_amount || 0);
 
-                    const paidValue = Number(inv.amount_paid_total ?? inv.paid_amount ?? 0);
-                    const pendingValue = Math.max(totalValue - paidValue, 0);
+                      const paidValue = Number(inv.amount_paid_total ?? inv.paid_amount ?? 0);
+                      const pendingValue = Math.max(totalValue - paidValue, 0);
 
-                    const invoiceStatus = inv.payment_status || "-";
-                    const gstPaymentStatus = inv.gst_payment_status || "NA";
+                      const invoiceStatus = inv.payment_status || "-";
+                      const gstPaymentStatus = inv.gst_payment_status || "NA";
 
-                    const lastPaymentAt = latestHistoryAt(
-                      inv,
-                      "payment_status_history",
-                      ["payment_date", "updated_at"]
-                    );
-                    const lastGstAt = latestHistoryAt(
-                      inv,
-                      "gst_payment_status_history",
-                      ["updated_at"]
-                    );
+                      const lastPaymentAt = latestHistoryAt(
+                        inv,
+                        "payment_status_history",
+                        ["payment_date", "updated_at"]
+                      );
+                      const lastGstAt = latestHistoryAt(
+                        inv,
+                        "gst_payment_status_history",
+                        ["updated_at"]
+                      );
 
-                    const lastUpdated = inv.updated_at ? fmtDateTime(inv.updated_at) : "-";
+                      const lastUpdated = inv.updated_at ? fmtDateTime(inv.updated_at) : "-";
 
-                    return (
-                      <tr key={inv.id}>
-                        <td className="border p-2">{inv.invoice_id || inv.id}</td>
-                        <td className="border p-2">{companyGroup}</td>
-                        <td className="border p-2">{clientName}</td>
-                        <td className="border p-2">{projectName}</td>
-                        <td className="border p-2">{formattedDate}</td>
-                        <td className="border p-2">{lastUpdated}</td>
+                      return (
+                        <tr
+                          key={inv.id}
+                          className={`transition-colors divide-x divide-[#AAAAAA] ${
+                            idx % 2 === 0 ? "bg-white" : "bg-[#F9F9F9]"
+                          } hover:bg-gray-50`}
+                        >
+                          <td className="px-6 py-4 text-center whitespace-nowrap p-[10px]">{inv.invoice_id || inv.id}</td>
+                          <td className="px-6 py-4 text-center whitespace-nowrap p-[10px]">{companyGroup}</td>
+                          <td className="px-6 py-4 text-center whitespace-nowrap p-[10px]">{clientName}</td>
+                          <td className="px-6 py-4 text-center whitespace-nowrap p-[10px]">{projectName}</td>
+                          <td className="px-6 py-4 text-center whitespace-nowrap p-[10px]">{formattedDate}</td>
+                          <td className="px-6 py-4 text-center whitespace-nowrap p-[10px]">{lastUpdated}</td>
 
-                        <td className="border p-2">
-                          ₹ {invoiceValue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="border p-2">
-                          ₹ {taxValue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="border p-2">
-                          ₹ {totalValue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                        </td>
+                          <td className="px-6 py-4 text-right whitespace-nowrap p-[10px]">
+                            ₹ {invoiceValue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-6 py-4 text-right whitespace-nowrap p-[10px]">
+                            ₹ {taxValue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-6 py-4 text-right whitespace-nowrap p-[10px]">
+                            ₹ {totalValue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </td>
 
-                        <td className="border p-2">
-                          ₹ {paidValue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="border p-2">
-                          ₹ {pendingValue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                        </td>
+                          <td className="px-6 py-4 text-right whitespace-nowrap p-[10px]">
+                            ₹ {paidValue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-6 py-4 text-right whitespace-nowrap p-[10px]">
+                            ₹ {pendingValue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </td>
 
-                        <td className="border p-2">{invoiceStatus}</td>
-                        <td className="border p-2">{gstPaymentStatus}</td>
-                        <td className="border p-2">{fmtDateTime(lastPaymentAt)}</td>
-                        <td className="border p-2">{fmtDateTime(lastGstAt)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
+                          <td className="px-6 py-4 text-center whitespace-nowrap p-[10px]">{badge(invoiceStatus)}</td>
+                          <td className="px-6 py-4 text-center whitespace-nowrap p-[10px]">{badge(gstPaymentStatus)}</td>
+                          <td className="px-6 py-4 text-center whitespace-nowrap p-[10px]">{fmtDateTime(lastPaymentAt)}</td>
+                          <td className="px-6 py-4 text-center whitespace-nowrap p-[10px]">{fmtDateTime(lastGstAt)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
 
-                {/* Sticky totals footer */}
-                <tfoot className="sticky bottom-0 z-10">
-                  <tr className="font-bold bg-gray-100">
-                    <td colSpan="6" className="border p-2 text-right">Totals</td>
-                    <td className="border p-2">
-                      ₹ {Number(totalSubtotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="border p-2">
-                      ₹ {Number(totalTax || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="border p-2">
-                      ₹ {Number(totalAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="border p-2">
-                      ₹ {Number(totalPaid || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="border p-2">
-                      ₹ {Number(totalPending || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="border p-2">—</td>
-                    <td className="border p-2">—</td>
-                    <td className="border p-2">—</td>
-                    <td className="border p-2">—</td>
-                  </tr>
-                </tfoot>
-              </table>
+                  {/* Sticky totals footer */}
+                  <tfoot className="sticky bottom-0 z-10">
+                    <tr className="font-bold bg-[#F1F1F1] divide-x divide-[#AAAAAA]">
+                      <td colSpan={6} className="px-6 py-3 text-right text-gray-700 p-[10px]">Totals</td>
+                      <td className="px-6 py-3 text-right text-gray-800 p-[10px]">
+                        ₹ {Number(totalSubtotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-3 text-right text-gray-800 p-[10px]">
+                        ₹ {Number(totalTax || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-3 text-right text-gray-800 p-[10px]">
+                        ₹ {Number(totalAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-3 text-right text-gray-800 p-[10px]">
+                        ₹ {Number(totalPaid || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-3 text-right text-gray-800 p-[10px]">
+                        ₹ {Number(totalPending || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-3 text-center text-gray-700 p-[10px]">—</td>
+                      <td className="px-6 py-3 text-center text-gray-700 p-[10px]">—</td>
+                      <td className="px-6 py-3 text-center text-gray-700 p-[10px]">—</td>
+                      <td className="px-6 py-3 text-center text-gray-700 p-[10px]">—</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
           )}
 
           {/* Bottom-right round pager (hidden on "Show All") */}
-          <div className="flex justify-end mt-4">
+          <div className="flex justify-end mt-6">
             <PaginationBar />
           </div>
         </>

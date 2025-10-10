@@ -1,43 +1,21 @@
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
-import { signOut } from "firebase/auth";
+import { signOut, onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebase";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
+
+// Assets
+import wtLogo from "./../assets/wt-logo.png";
+import wtxLogo from "./../assets/wtx-black-logo.png";
 
 export default function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
 
-  // Lock/unlock background scroll when mobile menu is open
+  // Header email (from Firebase)
+  const [adminEmail, setAdminEmail] = useState(null);
   useEffect(() => {
-    const html = document.documentElement;
-    const body = document.body;
-    if (mobileOpen) {
-      html.style.overflow = "hidden";
-      body.style.overflow = "hidden";
-      body.style.touchAction = "none";
-    } else {
-      html.style.overflow = "";
-      body.style.overflow = "";
-      body.style.touchAction = "";
-    }
-    return () => {
-      html.style.overflow = "";
-      body.style.overflow = "";
-      body.style.touchAction = "";
-    };
-  }, [mobileOpen]);
-
-  // Auto-close mobile on route change
-  useEffect(() => setMobileOpen(false), [location.pathname]);
-
-  // Watch scroll to toggle header shadow
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 2);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    const unsub = onAuthStateChanged(auth, (u) => setAdminEmail(u?.email || null));
+    return () => unsub();
   }, []);
 
   const handleLogout = async () => {
@@ -45,165 +23,157 @@ export default function DashboardLayout() {
     navigate("/login");
   };
 
-  // Icons
-  const MenuIcon = () => (
-    <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4 7h16M4 12h16M4 17h16" stroke="black" strokeWidth="2.5" strokeLinecap="round" />
-    </svg>
+  const isActive = (path) =>
+    location.pathname === path || location.pathname.startsWith(path + "/");
+
+  // Accordion
+  const [openKey, setOpenKey] = useState(null);
+  const toggle = (key) => setOpenKey((k) => (k === key ? null : key));
+
+  // Auto-open based on current route
+  const activeMap = useMemo(
+    () => ({
+      client:
+        isActive("/dashboard/add-client") || isActive("/dashboard/all-clients"),
+      project:
+        isActive("/dashboard/add-project") || isActive("/dashboard/all-projects"),
+      proforma:
+        isActive("/dashboard/create-quotation") ||
+        isActive("/dashboard/quotations"),
+      invoice:
+        isActive("/dashboard/create-invoice") ||
+        isActive("/dashboard/all-invoices"),
+    }),
+    [location.pathname]
   );
-  const CloseIcon = () => (
-    <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M6 6l12 12M18 6l-12 12" stroke="black" strokeWidth="2.5" strokeLinecap="round" />
-    </svg>
-  );
+
+  useEffect(() => {
+    if (activeMap.client) setOpenKey("client");
+    else if (activeMap.project) setOpenKey("project");
+    else if (activeMap.proforma) setOpenKey("proforma");
+    else if (activeMap.invoice) setOpenKey("invoice");
+  }, [activeMap]);
+
+  const avatarInitial = (adminEmail && adminEmail[0]?.toUpperCase()) || "A";
+
+  // ---------- Profile dropdown on top-right ----------
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  // ---------- NEW: Mobile drawer state ----------
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Close mobile drawer on route change + ESC
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") setMobileOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
-      {/* Header — fixed, high z-index, white background */}
-      <header
-        className={[
-          "fixed top-0 left-0 right-0  z-[9999]", // full width + high z-index
-          "bg-[#ffffff]", // solid white background
-          "border-b border-slate-200",
-          scrolled ? "shadow-sm" : "shadow-none",
-        ].join(" ")}
-      >
-        <div className="h-[100px] min-[1025px]:h-16 max-w-7xl mx-auto px-4 md:px-6 flex items-center justify-between overflow-visible">
-          <div className="invoices-logo select-none">
-            <img
-              src="/invoice-logo.png"
-              alt="Logo"
-              style={{ width: "100px", height: "auto" }}
-              draggable="false"
-            />
+    <div className="min-h-screen bg-[#F3F6FB]">
+      {/* ===== Top Header Strip (fixed) ===== */}
+      <header className="fixed top-0 left-0 right-0 h-[90px] bg-[#3b5997] text-white flex items-center justify-between md:px-6 shadow z-30  blue-profile">
+
+        {/* NEW: Left section with mobile hamburger (shown only < md) */}
+        <div className="flex items-center gap-2 pl-3 md:hidden menu-bar">
+          <button
+            onClick={() => setMobileOpen((v) => !v)}
+            aria-label={mobileOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileOpen}
+            className="p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-white/60 ml-[20px] menu-three"
+          >
+            {mobileOpen ? <CloseIcon /> : <HamburgerIcon />}
+          </button>
+        </div>
+
+        {/* Right section with email + avatar */}
+        <div className="items-center gap-3 admin-block ml-auto mr-0 md:mr-6" ref={menuRef}>
+          <div className="sm:flex items-center gap-2 bg-white/10 rounded-full pl-2 pr-3 py-1 backdrop-blur">
+            <span className="text-sm font-medium truncate align-right display-block w-[100%]">
+              {adminEmail || "admin@gmail.com"}
+            </span>
           </div>
 
-          {/* Desktop nav */}
-          <nav className="hidden min-[1025px]:flex items-center space-x-6 xl:space-x-10 2xl:space-x-12 relative z-[70]">
-            <NavLink to="/dashboard/home">Home</NavLink>
-
-            <Dropdown label="Client Registration">
-              <DropdownItem to="/dashboard/add-client">Register Client</DropdownItem>
-              <DropdownItem to="/dashboard/all-clients">Client List</DropdownItem>
-            </Dropdown>
-
-            <Dropdown label="Project Management">
-              <DropdownItem to="/dashboard/add-project">Add Project</DropdownItem>
-              <DropdownItem to="/dashboard/all-projects">All Projects</DropdownItem>
-            </Dropdown>
-
-            <Dropdown label="Proforma Generation">
-              <DropdownItem to="/dashboard/create-quotation">Create Proforma</DropdownItem>
-              <DropdownItem to="/dashboard/quotations">Proformas List</DropdownItem>
-            </Dropdown>
-
-            <Dropdown label="Invoice Generation">
-              <DropdownItem to="/dashboard/create-invoice">Create Invoice</DropdownItem>
-              <DropdownItem to="/dashboard/all-invoices">Invoice List</DropdownItem>
-            </Dropdown>
-
-            <NavLink to="/dashboard/invoice-summary">Invoice Summary</NavLink>
-            <NavLink to="/dashboard/pdf-manager">PDF Manager</NavLink>
-            <NavLink to="/dashboard/audit-manager">Audit Manager</NavLink>
-
-            <button
-              onClick={handleLogout}
-              className="logout ml-2 inline-flex items-center justify-center rounded-md px-4 py-2 text-white bg-gradient-to-b from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700"
-            >
-              Logout
-            </button>
-          </nav>
-
-          {/* Mobile menu button */}
+          {/* Avatar -> dropdown */}
           <button
-            onClick={() => setMobileOpen(true)}
-            className={`min-[1025px]:hidden inline-flex items-center justify-center w-10 h-10 rounded-md hover:bg-slate-100 ${mobileOpen ? "hidden" : ""}`}
-            aria-label="Open menu"
-            aria-expanded={mobileOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+            className="w-9 h-9 rounded-full bg-white text-[#1E3A8A] grid place-items-center font-semibold focus:outline-none mr-[30px]"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            title="Account"
           >
-            <MenuIcon />
+            {avatarInitial}
           </button>
+
+          {/* Dropdown */}
+          {menuOpen && (
+            <div
+              role="menu"
+              className="absolute right-[30px] top-[75px] mt-2 w-44 bg-white text-slate-700 rounded-md shadow-lg border z-40 h-[50px] admin-in-block"
+            >
+              {/* <button
+                className="w-full text-left px-3 py-2 hover:bg-slate-50 mb-[2px] border-0 cursor-pointer"
+                onClick={() => {
+                  setMenuOpen(false);
+                  navigate("/dashboard/profile");
+                }}
+              >
+                Profile
+              </button> */}
+              <button
+                className="w-full text-left  border-0 cursor-pointer mt-[0] p-[10px] pt-[0]"
+                onClick={handleLogout}
+              >
+                Logout
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
-      {/* Mobile FULLSCREEN menu */}
+      {/* ===== Sidebar ===== */}
+      {/* Desktop: fixed sidebar (md+) */}
+      <aside className=" md:block fixed left-0 top-[60px] inset-y-0 w-[260px] bg-[#ffffff] border-r border-[#E8ECF2] p-[10px] overflow-y-auto z-20 h-full sidebar">
+        <SidebarContent />
+      </aside>
+
+      {/* Mobile: slide-in drawer (only < md) */}
+      <div
+        className={[
+          "md:hidden fixed top-[60px] left-0 h-[calc(100%-60px)] w-[260px] bg-[#ffffff] border-r border-[#E8ECF2] z-40 transition-transform duration-300 open-sidebar",
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
+        ].join(" ")}
+        role="dialog"
+        aria-modal="true"
+      >
+        <SidebarContent onLinkClick={() => setMobileOpen(false)} />
+      </div>
+
+      {/* Mobile overlay */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-[10000] min-[1025px]:hidden">
-          <div className="fixed inset-0 bg-[#ffffff] text-slate-800 overflow-y-auto menu-block">
-            <div className="max-w-7xl mx-auto px-5 pt-4 pb-8">
-              <div className="h-12 flex items-center justify-between">
-                <span className="text-[15px] font-semibold tracking-wide text-slate-700">Menu</span>
-                <button
-                  onClick={() => setMobileOpen(false)}
-                  className="w-10 h-10 inline-flex items-center justify-center rounded-md hover:bg-slate-100 close-menu-btn"
-                  aria-label="Close menu"
-                >
-                  <CloseIcon />
-                </button>
-              </div>
-
-              {/* Mobile Nav */}
-              <nav className="mt-2">
-                <Link className="block w-full px-3 py-3 rounded-lg text-[15px] font-medium hover:bg-slate-50" to="/dashboard/home">
-                  Home
-                </Link>
-
-                <MobileSection
-                  title="Project Management"
-                  items={[
-                    { label: "Add Project", to: "/dashboard/add-project" },
-                    { label: "All Projects", to: "/dashboard/all-projects" },
-                  ]}
-                />
-                <MobileSection
-                  title="Client Registration"
-                  items={[
-                    { label: "Register Client", to: "/dashboard/add-client" },
-                    { label: "Client List", to: "/dashboard/all-clients" },
-                  ]}
-                />
-                <MobileSection
-                  title="Invoice Generation"
-                  items={[
-                    { label: "Create Invoice", to: "/dashboard/create-invoice" },
-                    { label: "Invoice List", to: "/dashboard/all-invoices" },
-                  ]}
-                />
-                <MobileSection
-                  title="Quotation Generation"
-                  items={[
-                    { label: "Create Proforma", to: "/dashboard/create-quotation" },
-                    { label: "Proformas List", to: "/dashboard/quotations" },
-                  ]}
-                />
-
-                <Link className="block w-full mt-1 px-3 py-3 rounded-lg text-[15px] font-medium hover:bg-slate-50" to="/dashboard/invoice-summary">
-                  Invoice Summary
-                </Link>
-
-                <Link className="block w-full mt-1 px-3 py-3 rounded-lg text-[15px] font-medium hover:bg-slate-50" to="/dashboard/pdf-manager">
-                  PDF Manager
-                </Link>
-
-                <Link className="block w-full mt-1 px-3 py-3 rounded-lg text-[15px] font-medium hover:bg-slate-50" to="/dashboard/audit-manager">
-                  Audit Manager
-                </Link>
-
-                <button
-                  onClick={handleLogout}
-                  className="logout mt-6 w-full inline-flex items-center justify-center rounded-lg px-4 py-3 text-sm font-semibold text-white bg-gradient-to-b from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700"
-                >
-                  Logout
-                </button>
-              </nav>
-            </div>
-          </div>
-        </div>
+        <div
+          className="md:hidden fixed inset-0 top-[60px] z-30"
+          onClick={() => setMobileOpen(false)}
+        />
       )}
 
-      {/* Page content — add top padding to clear the fixed header */}
-      <main className="flex-1 pt-[135px] min-[1025px]:pt-16">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 py-6">
+      {/* ===== Content ===== */}
+      <main className="pt-[100px] md:ml-[260px]">
+        <div className="px-4 md:px-6 py-4">
           <Outlet />
         </div>
       </main>
@@ -211,104 +181,277 @@ export default function DashboardLayout() {
   );
 }
 
-/* ---------- Reusable UI bits ---------- */
+/* ===== Extracted sidebar content so we can reuse for desktop + mobile ===== */
+function SidebarContent({ onLinkClick }) {
+  const location = useLocation();
+  const isActive = (path) =>
+    location.pathname === path || location.pathname.startsWith(path + "/");
 
-function NavLink({ to, children }) {
+  const [openKey, setOpenKey] = useState(null);
+  const toggle = (key) => setOpenKey((k) => (k === key ? null : key));
+
+  useEffect(() => {
+    if (isActive("/dashboard/add-client") || isActive("/dashboard/all-clients")) setOpenKey("client");
+    else if (isActive("/dashboard/add-project") || isActive("/dashboard/all-projects")) setOpenKey("project");
+    else if (isActive("/dashboard/create-quotation") || isActive("/dashboard/quotations")) setOpenKey("proforma");
+    else if (isActive("/dashboard/create-invoice") || isActive("/dashboard/all-invoices")) setOpenKey("invoice");
+  }, [location.pathname]);
+
+  return (
+    <>
+      <div className="h-[64px] flex items-center justify-center gap-4 border-b border-[#E8ECF2] p-[10px]">
+        <img src={wtLogo} alt="WT" className="h-7 w-auto" />
+        <div className="h-[40px] w-[1px] bg-slate-300" />
+        <img src={wtxLogo} alt="WTX" className="h-7 w-auto" />
+      </div>
+
+      <nav className="px-3 py-4 text-[18px] space-y-1">
+        <RowSingle to="/dashboard/home" icon={<HomeIcon />} active={isActive("/dashboard/home")} onLinkClick={onLinkClick}>
+          Home
+        </RowSingle>
+
+        <RowDropdown
+          id="client"
+          label="Client Registration"
+          icon={<GridIcon />}
+          isOpen={openKey === "client"}
+          onToggle={() => toggle("client")}
+          items={[
+            { to: "/dashboard/add-client", label: "Register Client" },
+            { to: "/dashboard/all-clients", label: "Client List" },
+          ]}
+          onLinkClick={onLinkClick}
+        />
+
+        <RowDropdown
+          id="project"
+          label="Project Management"
+          icon={<GearIcon />}
+          isOpen={openKey === "project"}
+          onToggle={() => toggle("project")}
+          items={[
+            { to: "/dashboard/add-project", label: "Add Project" },
+            { to: "/dashboard/all-projects", label: "All Projects" },
+          ]}
+          onLinkClick={onLinkClick}
+        />
+
+        <RowDropdown
+          id="proforma"
+          label="Proforma Generation"
+          icon={<DocIcon />}
+          isOpen={openKey === "proforma"}
+          onToggle={() => toggle("proforma")}
+          items={[
+            { to: "/dashboard/create-quotation", label: "Create Proforma" },
+            { to: "/dashboard/quotations", label: "Proformas List" },
+          ]}
+          onLinkClick={onLinkClick}
+        />
+
+        <RowDropdown
+          id="invoice"
+          label="Invoice Generation"
+          icon={<PaperIcon />}
+          isOpen={openKey === "invoice"}
+          onToggle={() => toggle("invoice")}
+          items={[
+            { to: "/dashboard/create-invoice", label: "Create Invoice" },
+            { to: "/dashboard/all-invoices", label: "Invoice List" },
+          ]}
+          onLinkClick={onLinkClick}
+        />
+
+        <RowSingle to="/dashboard/invoice-summary" icon={<ChartIcon />} active={isActive("/dashboard/invoice-summary")} onLinkClick={onLinkClick}>
+          invoice Summary
+        </RowSingle>
+
+        <RowSingle to="/dashboard/pdf-manager" icon={<PdfIcon />} active={isActive("/dashboard/pdf-manager")} onLinkClick={onLinkClick}>
+          PDF Manager
+        </RowSingle>
+
+        <RowSingle to="/dashboard/audit-manager" icon={<ListIcon />} active={isActive("/dashboard/audit-manager")} onLinkClick={onLinkClick}>
+          Audit Manager
+        </RowSingle>
+      </nav>
+    </>
+  );
+}
+
+/* ===== Row Components (tweak: optional onLinkClick to close drawer on mobile) ===== */
+function RowSingle({ to, icon, active, children, onLinkClick }) {
   return (
     <Link
       to={to}
-      className="px-3 py-2 rounded-md text-slate-700 hover:bg-slate-50"
+      onClick={onLinkClick}
+      className={[
+        "relative flex items-center gap-2 rounded-md px-3 py-2 text-[14px] transition-colors",
+        active ? "bg-[rgb(233_241_255_/_30%)] text-[#1E3A8A] font-medium" : "text-slate-700 ",
+      ].join(" ")}
     >
-      {children}
+      <span className="text-[16px]">{icon}</span>
+      <span>{children}</span>
+      {active && <span className="absolute right-0 top-1/2 -translate-y-1/2 h-5 w-1.5 rounded-full bg-[#3b5997]" />}
     </Link>
   );
 }
 
-function Dropdown({ label, children }) {
-  const [open, setOpen] = useState(false);
+function RowDropdown({ id, label, icon, items, isOpen, onToggle, onLinkClick }) {
+  const location = useLocation();
+  const anyActive = items.some((it) => location.pathname.startsWith(it.to));
 
   return (
-    <div
-      className="relative"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-    >
+    <div className="rounded-md">
       <button
         type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        className="inline-flex items-center gap-1 px-3 py-2 rounded-md text-slate-700 hover:bg-slate-50 focus:outline-none"
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={onToggle}
+        className={[
+          "relative w-full flex items-center justify-between rounded-md px-3 py-2 text-[14px] transition-colors",
+          anyActive ? "bg-[rgb(233_241_255_/_30%)] text-[#1E3A8A] font-medium " : "text-slate-700 ",
+        ].join(" ")}
+        aria-expanded={isOpen}
+        aria-controls={`submenu-${id}`}
       >
-        {label} ▾
+        <span className="flex items-center gap-2">
+          <span className="text-[16px]">{icon}</span>
+          <span>{label}</span>
+        </span>
+        <Caret open={isOpen} />
+        {anyActive && <span className="absolute right-0 top-1/2 -translate-y-1/2 h-5 w-1.5 rounded-full bg-[#3b5997]" />}
       </button>
 
-      {open && (
-        <div className="absolute left-0 top-full mt-0 z-[100] min-w-full">
-          <div className="bg-white rounded-xl shadow-xl py-1">
-            <div className="flex flex-col w-full gap-1">{children}</div>
-          </div>
+      {isOpen && (
+        <div id={`submenu-${id}`} className="pt-1">
+          {items.map((it) => {
+            const active = location.pathname.startsWith(it.to);
+            return (
+              <Link
+                key={it.to}
+                to={it.to}
+                onClick={onLinkClick}
+                className={[
+                  "relative flex items-center gap-2 pl-8 pr-3 py-2 rounded-md text-[14px] ",
+                  active ? "bg-[rgb(233_241_255_/_30%)] text-[#1E3A8A] font-medium" : "text-slate-700 ",
+                ].join(" ")}
+              >
+                <span className="text-gray-300">–</span>
+                <span>{it.label}</span>
+                {active && <span className="absolute right-0 top-1/2 -translate-y-1/2 h-5 w-1.5 rounded-full bg-[#3b5997]" />}
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-function DropdownItem({ to, children }) {
+/* ===== Icons ===== */
+function Caret({ open }) {
   return (
-    <Link
-      to={to}
-      className="block w-full px-3 py-2 rounded-lg text-slate-700 hover:bg-slate-50"
-    >
-      {children}
-    </Link>
-  );
-}
-
-function Chevron30({ open }) {
-  return (
-    <svg
-      width="30"
-      height="30"
-      viewBox="0 0 24 24"
-      className={`transition-transform ${open ? "rotate-180" : ""}`}
-      aria-hidden="true"
-    >
-      <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
+    <svg width="16" height="16" viewBox="0 0 24 24" className={`transition-transform ${open ? "rotate-180" : ""}`}>
+      <path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" />
     </svg>
   );
 }
 
-function MobileSection({ title, items }) {
-  const [open, setOpen] = useState(false);
-
+function HamburgerIcon() {
   return (
-    <div className="mt-1">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full px-3 py-3 flex items-center justify-between gap-3 text-[15px] font-semibold text-slate-800 rounded-lg hover:bg-slate-50"
-        aria-expanded={open}
-      >
-        <span>{title}</span>
-        <Chevron30 open={open} />
-      </button>
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
 
-      <div
-        className={`overflow-hidden transition-[max-height] duration-300 ease-in-out`}
-        style={{ maxHeight: open ? "1000px" : "0px" }}
-      >
-        <div className="py-1 flex flex-col gap-1">
-          {items.map((it) => (
-            <Link
-              key={it.to}
-              to={it.to}
-              className="block w-full px-5 py-2.5 rounded-lg text-slate-700 hover:bg-slate-50"
-            >
-              {it.label}
-            </Link>
-          ))}
-        </div>
-      </div>
-    </div>
+function CloseIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 6l12 12M18 6l-12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function HomeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d="M4 10.5l8-6 8 6V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5z" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+function GridIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+function GearIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M4 12h2M18 12h2M12 4v2M12 18v2M6 6l1.4 1.4M16.6 16.6L18 18M18 6l-1.4 1.4M6 18l1.4-1.4" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+function DocIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d="M7 4h6l4 4v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M13 4v4h4" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+function PaperIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d="M6 4h9l3 3v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M15 4v4h4" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+function ChartIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d="M5 19V6M10 19v-7M15 19v-4M20 19V4" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+function PdfIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d="M7 4h6l4 4v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M9 13h6M9 16h6" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+function ListIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d="M5 7h14M5 12h14M5 17h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+function UserIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M5 20a7 7 0 0 1 14 0" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+function LogoutIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path d="M15 12H3M12 8l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M21 4v16a2 2 0 0 1-2 2h-5" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  );
+}
+function GmailIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M20 18a2 2 0 0 0 2-2V8.5l-10 6.25L2 8.5V16a2 2 0 0 0 2 2h16z"></path>
+      <path fill="currentColor" d="M22 6.5V8l-10 6.25L2 8V6.5l10 6.25L22 6.5z"></path>
+    </svg>
   );
 }

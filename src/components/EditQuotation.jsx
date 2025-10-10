@@ -1,12 +1,9 @@
-import React, { useEffect, useState } from "react";
+// src/components/EditQuotation.jsx
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Select from "react-select";
 import { db } from "../firebase";
-import {
-  doc,
-  getDoc,
-  updateDoc,
-} from "firebase/firestore";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 
 export default function EditQuotation() {
   const { id } = useParams();
@@ -15,41 +12,60 @@ export default function EditQuotation() {
   const [docData, setDocData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // same options; keep your existing choices
+  // Choices (mirror EditProject tone)
   const companies = ["WT", "WTX", "WTPL", "WTXPL"];
   const paymentOptions = ["Pending", "Partial", "Paid"];
-  const serviceOptions = [
-    { value: "Lyrical Videos", label: "Lyrical Videos" },
-    { value: "Teasers", label: "Teasers" },
-    { value: "Trailers", label: "Trailers" },
-    { value: "Posters", label: "Posters" },
-    { value: "Promos", label: "Promos" },
-    { value: "Marketing", label: "Marketing" },
-    { value: "Web Development", label: "Web Development" },
-    { value: "Editing", label: "Editing" },
-    { value: "Meme Marketing", label: "Meme Marketing" },
-    { value: "Creative design", label: "Creative design" },
-  ];
 
-  // normalize incoming record to a consistent shape for editing
+  // Options for chips
+  const serviceOptions = useMemo(
+    () =>
+      [
+        "Lyrical Videos",
+        "Teasers",
+        "Trailers",
+        "Posters",
+        "Promos",
+        "Marketing",
+        "Web Development",
+        "Editing",
+        "Meme Marketing",
+        "Creative design",
+        "Digital Creatives",
+      ].map((s) => ({ value: s, label: s })),
+    []
+  );
+
+  // --- UI helpers (same feel as EditProject) ---
+  const inputClass = (hasError) =>
+    `w-full border px-4 py-2 rounded-[10px] ${
+      hasError
+        ? "!border-red-500 !text-red-700 placeholder-red-400 focus:outline-none focus:ring-1 focus:!ring-red-500"
+        : "border-gray-300 text-black focus:outline-none focus:ring-2 focus:ring-gray-200"
+    }`;
+  const labelClass = (hasError) =>
+    `block mb-2 font-semibold ${hasError ? "text-red-700" : "text-black"}`;
+  const helpText = (msg) => msg && <p className="text-red-600 text-sm mt-1">{msg}</p>;
+
+  const COMPANY_OPTIONS = companies.map((c) => ({ value: c, label: c }));
+  const PAYMENT_OPTIONS = paymentOptions.map((p) => ({ value: p, label: p }));
+
+  // --- Normalize: produce chip values from existing data (strings or {name}) ---
   const normalizeForEdit = (raw) => {
     const proforma_id = raw.proforma_id || raw.quotation_id || "";
     const proforma_date = raw.proforma_date || raw.quotation_date || raw.date || "";
     const proforma_title = raw.proforma_title || raw.quotation_title || "";
-    const company = raw.proforma_type || raw.quotation_type || raw.company || "";
+    const company = raw.proforma_type || raw.quotation_type || raw.company || "WT";
     const payment_status = raw.payment_status || "Pending";
 
-    // services: if name is array (from multi-select), pick first for single-select display
-    const services = (raw.services || []).map((s) => {
-      const nameStr = Array.isArray(s.name) ? (s.name[0] || "") : (s.name || "");
-      return {
-        ...s,
-        // for react-select single
-        serviceType: nameStr ? { value: nameStr, label: nameStr } : null,
-        description: s.description || "",
-        amount: s.amount || "",
-      };
-    });
+    const names = Array.isArray(raw.services)
+      ? raw.services
+          .map((s) =>
+            typeof s === "string" ? s : Array.isArray(s.name) ? s.name[0] : s.name
+          )
+          .filter(Boolean)
+      : [];
+
+    const servicesSelected = names.map((n) => ({ value: n, label: n }));
 
     return {
       ...raw,
@@ -58,23 +74,21 @@ export default function EditQuotation() {
       proforma_title,
       company,
       payment_status,
-      services,
+      servicesSelected, // react-select value ONLY
     };
   };
 
+  // --- Fetch ---
   useEffect(() => {
     const fetchData = async () => {
       try {
         const ref = doc(db, "quotations", id);
         const snap = await getDoc(ref);
-
         if (!snap.exists()) {
           alert("Document not found!");
           return navigate("/dashboard/all-quotations");
         }
-
-        const normalized = normalizeForEdit(snap.data());
-        setDocData(normalized);
+        setDocData(normalizeForEdit(snap.data()));
       } catch (error) {
         console.error("Error fetching proforma:", error);
         alert("Something went wrong.");
@@ -82,49 +96,32 @@ export default function EditQuotation() {
         setLoading(false);
       }
     };
-
     fetchData();
   }, [id, navigate]);
 
-  const handleServiceChange = (index, field, value) => {
-    const updated = [...docData.services];
-    if (field === "serviceType") {
-      updated[index].serviceType = value;
-      updated[index].name = value?.value || "";
-    } else {
-      updated[index][field] = value;
-    }
-    setDocData({ ...docData, services: updated });
-  };
-
+  // --- Submit ---
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     try {
-      // prepare services back to persisted shape
-      const persistedServices = (docData.services || []).map((s) => ({
-        name: s.serviceType?.value || s.name || "",
-        description: s.description || "",
-        amount: s.amount ? Number(s.amount) : 0,
-      }));
-
-      // write BOTH proforma_* and quotation_* for backward compatibility
       const payload = {
-        ...docData,
-        proforma_id: docData.proforma_id,
-        proforma_date: docData.proforma_date,
-        proforma_title: docData.proforma_title,
-        proforma_type: docData.company,
+        // ids/titles/dates
+        proforma_id: docData.proforma_id || "",
+        proforma_date: docData.proforma_date || "",
+        proforma_title: docData.proforma_title || "",
+        proforma_type: docData.company || "WT",
 
         // legacy mirrors
-        quotation_id: docData.proforma_id,
-        quotation_date: docData.proforma_date,
-        quotation_title: docData.proforma_title,
-        quotation_type: docData.company,
+        quotation_id: docData.proforma_id || "",
+        quotation_date: docData.proforma_date || "",
+        quotation_title: docData.proforma_title || "",
+        quotation_type: docData.company || "WT",
 
-        company: docData.company,
+        // company & status
+        company: docData.company || "WT",
         payment_status: docData.payment_status || "Pending",
-        services: persistedServices,
+
+        // services: array of strings (chips)
+        services: (docData.servicesSelected || []).map((o) => o.value),
       };
 
       await updateDoc(doc(db, "quotations", id), payload);
@@ -136,139 +133,153 @@ export default function EditQuotation() {
   };
 
   if (loading || !docData) {
-    return <p className="text-center p-6">Loading...</p>;
+    return (
+      <div className="bg-[#F4F6FF] p-[10px]">
+        <div className="max-w-6xl mx-auto">
+          <div className="bg-[#ffffff] shadow-sm mb-4 p-[15px] border-curve mb-[20px]">
+            <h2 className="font-semibold text-[#000000] m-[0]">Edit Proforma</h2>
+          </div>
+          <div className="bg-[#ffffff] shadow-md rounded-xl p-[15px] md:p-8 max-w-6xl mx-auto border-curve">
+            <p className="text-gray-600">Loading…</p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-black flex justify-center p-6">
-      <form
-        onSubmit={handleSubmit}
-        className="bg-gray-900 text-white rounded-xl shadow-xl p-8 w-full max-w-4xl"
-      >
-        {/* Heading changed */}
-        <h2 className="text-3xl font-bold text-center mb-8">Edit Proforma</h2>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Proforma Date */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Proforma Date</label>
-            <input
-              type="text"
-              value={docData.proforma_date}
-              onChange={(e) => setDocData({ ...docData, proforma_date: e.target.value })}
-              className="w-full p-3 rounded bg-gray-800 border border-gray-700 text-white"
-            />
-          </div>
-
-          {/* Proforma Title */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Proforma Title</label>
-            <input
-              type="text"
-              value={docData.proforma_title}
-              onChange={(e) => setDocData({ ...docData, proforma_title: e.target.value })}
-              className="w-full p-3 rounded bg-gray-800 border border-gray-700 text-white"
-            />
-          </div>
-
-          {/* Company */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Select Company</label>
-            <select
-              value={docData.company}
-              onChange={(e) => setDocData({ ...docData, company: e.target.value })}
-              className="w-full p-3 rounded bg-gray-800 border border-gray-700 text-white"
-            >
-              {companies.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Payment Status */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Payment Status</label>
-            <select
-              value={docData.payment_status}
-              onChange={(e) => setDocData({ ...docData, payment_status: e.target.value })}
-              className="w-full p-3 rounded bg-gray-800 border border-gray-700 text-white"
-            >
-              {paymentOptions.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </div>
+    <div className="bg-[#F4F6FF] p-[10px]">
+      <div className="max-w-6xl mx-auto">
+        {/* Title chip */}
+        <div className="bg-[#ffffff] shadow-sm mb-4 p-[15px] border-curve mb-[20px]">
+          <h2 className="font-semibold text-[#000000] m-[0]">Edit Proforma</h2>
         </div>
 
-        {/* Services */}
-        <div className="mt-8 space-y-6">
-          <h3 className="text-lg font-semibold text-white">Services</h3>
-
-          {docData.services.map((s, index) => (
-            <div key={index} className="bg-gray-800 p-4 rounded-lg space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Service Name</label>
-                <Select
-                  options={serviceOptions}
-                  value={s.serviceType}
-                  onChange={(val) => handleServiceChange(index, "serviceType", val)}
-                  styles={selectStyles}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Description</label>
-                <textarea
-                  rows={2}
-                  value={s.description || ""}
-                  onChange={(e) => handleServiceChange(index, "description", e.target.value)}
-                  className="w-full p-3 rounded bg-gray-900 border border-gray-700 text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Amount (₹)</label>
-                <input
-                  type="number"
-                  value={s.amount || ""}
-                  onChange={(e) => handleServiceChange(index, "amount", e.target.value)}
-                  className="w-full p-3 rounded bg-gray-900 border border-gray-700 text-white"
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <button
-          type="submit"
-          className="update-project-btn mt-10 mb-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold tracking-wide py-3 px-6 rounded-xl shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 ease-in-out"
+        {/* Main form card */}
+        <form
+          onSubmit={handleSubmit}
+          className="bg-[#ffffff] shadow-md rounded-xl p-[15px] md:p-8 max-w-6xl mx-auto border-curve form-block"
+          noValidate
         >
-          Update Proforma
-        </button>
-      </form>
+          <div className="grid grid-cols-2 gap-6">
+            {/* Proforma Date */}
+            <div className="pl-[15px] pr-[15px] space-y-2">
+              <label className={labelClass(false)}>Proforma Date</label>
+              <input
+                type="text"
+                value={docData.proforma_date}
+                onChange={(e) => setDocData({ ...docData, proforma_date: e.target.value })}
+                className={`${inputClass(false)} border-curve`}
+                placeholder="DD/MM/YYYY or YYYY-MM-DD"
+              />
+              {helpText("")}
+            </div>
+
+            {/* Proforma Title */}
+            <div className="pl-[15px] pr-[15px] space-y-2">
+              <label className={labelClass(false)}>Proforma Title</label>
+              <input
+                type="text"
+                value={docData.proforma_title}
+                onChange={(e) => setDocData({ ...docData, proforma_title: e.target.value })}
+                className={`${inputClass(false)} border-curve`}
+                placeholder="e.g., Creative Services Quotation"
+              />
+              {helpText("")}
+            </div>
+
+            {/* Company */}
+            <div className="pl-[15px] pr-[15px] space-y-2">
+              <label className={labelClass(false)}>Select Company</label>
+              <Select
+                options={COMPANY_OPTIONS}
+                value={COMPANY_OPTIONS.find((o) => o.value === docData.company) || null}
+                onChange={(opt) => setDocData({ ...docData, company: opt?.value || "WT" })}
+                styles={selectStylesLight}
+                classNamePrefix="rs"
+                menuPortalTarget={document.body}
+                menuPosition="fixed"
+              />
+            </div>
+
+            {/* Payment Status */}
+            <div className="pl-[15px] pr-[15px] space-y-2">
+              <label className={labelClass(false)}>Payment Status</label>
+              <Select
+                options={PAYMENT_OPTIONS}
+                value={PAYMENT_OPTIONS.find((o) => o.value === docData.payment_status) || null}
+                onChange={(opt) =>
+                  setDocData({ ...docData, payment_status: opt?.value || "Pending" })
+                }
+                styles={selectStylesLight}
+                classNamePrefix="rs"
+                menuPortalTarget={document.body}
+                menuPosition="fixed"
+              />
+            </div>
+
+            {/* Services (chip multi-select) */}
+            <div className="pl-[15px] pr-[15px] col-span-2 space-y-2">
+              <label className={labelClass(false)}>Services</label>
+              <Select
+                isMulti
+                closeMenuOnSelect={false}
+                options={serviceOptions}
+                value={docData.servicesSelected || []}
+                onChange={(arr) => setDocData({ ...docData, servicesSelected: arr || [] })}
+                placeholder="Select services"
+                styles={selectStylesLight}
+                classNamePrefix="rs"
+                menuPortalTarget={document.body}
+                menuPosition="fixed"
+              />
+            </div>
+
+            {/* Submit */}
+            <div className=" flex justify-center pl=[15px] pr-[15px] pt-[10px] pb-[10px] col-span-2">
+              <button
+                type="submit"
+                className="bg-[#3b5997] text-[#ffffff] font-semibold  rounded-[10px] w-[30%] h-[40px] border-0"
+              >
+                Update Proforma
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
 
-const selectStyles = {
-  control: (base) => ({
+// ✅ Same clean light react-select styles as EditProject
+const selectStylesLight = {
+  control: (base, state) => ({
     ...base,
-    backgroundColor: "#1f2937",
-    borderColor: "#374151",
-    color: "#fff",
+    backgroundColor: "#fff",
+    borderColor: state.isFocused ? "#c7d2fe" : "#d1d5db",
+    boxShadow: state.isFocused ? "0 0 0 2px rgba(199,210,254,0.6)" : "none",
+    minHeight: 48,
+    borderRadius: 10,
+    ":hover": { borderColor: "#d1d5db" },
+    fontSize: 14,
   }),
-  input: (base) => ({ ...base, color: "white" }),
-  singleValue: (base) => ({ ...base, color: "white" }),
-  multiValue: (base) => ({ ...base, backgroundColor: "#374151" }),
-  multiValueLabel: (base) => ({ ...base, color: "white" }),
-  menu: (base) => ({ ...base, backgroundColor: "#111827" }),
-  option: (base, state) => ({
-    ...base,
-    backgroundColor: state.isFocused ? "#374151" : "#111827",
-    color: "white",
+  valueContainer: (b) => ({ ...b, padding: "6px 12px" }),
+  input: (b) => ({ ...b, color: "#111827" }),
+  placeholder: (b) => ({ ...b, color: "#9ca3af" }),
+  singleValue: (b) => ({ ...b, color: "#111827" }),
+  menu: (b) => ({ ...b, backgroundColor: "#fff", borderRadius: 10, overflow: "hidden" }),
+  option: (b, s) => ({
+    ...b,
+    backgroundColor: s.isFocused ? "#f3f4f6" : "#fff",
+    color: "#111827",
+    cursor: "pointer",
   }),
+  multiValue: (b) => ({ ...b, backgroundColor: "#eef2ff", borderRadius: 6 }),
+  multiValueLabel: (b) => ({ ...b, color: "#3730a3", fontWeight: 600 }),
+  multiValueRemove: (b) => ({
+    ...b,
+    ":hover": { backgroundColor: "#c7d2fe", color: "#111827", cursor: "pointer" },
+  }),
+  indicatorsContainer: (b) => ({ ...b, paddingRight: 8 }),
+  indicatorsSeparator: () => ({ display: "none" }),
 };
