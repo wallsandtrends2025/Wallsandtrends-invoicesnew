@@ -199,10 +199,10 @@ function SidebarContent({ onLinkClick }) {
 
   return (
     <>
-      <div className="h-[64px] flex items-center justify-center gap-4 border-b border-[#E8ECF2] p-[10px]">
-        <img src={wtLogo} alt="WT" className="h-7 w-auto" />
-        <div className="h-[40px] w-[1px] bg-slate-300" />
-        <img src={wtxLogo} alt="WTX" className="h-7 w-auto" />
+      <div className="h-[100px] flex items-center justify-center gap-4 border-b border-[#E8ECF2] p-[10px]">
+        <img src={wtLogo} alt="WT" className="h-auto w-[80px]" />
+        <div className="h-[50px] w-[1px] bg-[#ffffff]" />
+        <img src={wtxLogo} alt="WTX" className="h-auto w-[80px]" />
       </div>
 
       <nav className="px-3 py-4 text-[18px] space-y-1">

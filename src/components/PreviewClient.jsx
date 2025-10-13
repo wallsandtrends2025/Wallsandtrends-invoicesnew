@@ -36,7 +36,7 @@ export default function PreviewClient() {
     );
   }
 
-  // --- helpers to match the screenshot look/wording ---
+  // --- helpers ---
   const fmt = (v, fallback = "—") =>
     v === undefined || v === null || String(v).trim() === "" ? fallback : v;
 
@@ -58,24 +58,47 @@ export default function PreviewClient() {
     }
   };
 
+  const formatPocLabel = (s) => {
+    const m = String(s || "").match(/^(.*\S)\s*-?\s*([A-Za-z]{2,}\d{2,})$/);
+    return m ? `${m[1]} - ${m[2]}` : s || "—";
+  };
+
+  const emailCell = (value) => {
+    const v = String(value || "").trim();
+    if (!v) return "—";
+    return (
+      <a href={`mailto:${v}`} className="underline text-blue-700 hover:text-blue-900">
+        {v}
+      </a>
+    );
+  };
+
+  // Build rows — POC (internal) shown LAST
   const rows = [
     { label: "Client Name", value: fmt(client.client_name) },
-    // screenshot shows just "Company" and "-" when empty:
     { label: "Company", value: fmt(client.company_group, "-") },
     { label: "Phone Number", value: fmt(client.phone) },
-    { label: "POC", value: fmt(client.poc) },
-    { label: "Email", value: fmt(client.email) },
+    { label: "Email", value: emailCell(client.email) },
+
+    // NEW: Client POC fields
+    { label: "Client POC Name", value: fmt(client.client_poc_name) },
+    { label: "Client POC Number", value: fmt(client.client_poc_phone) },
+    { label: "Client POC Email", value: emailCell(client.client_poc_email) },
+
     { label: "Address", value: fmt(client.address) },
     { label: "Country", value: fmt(client.country) },
     { label: "State", value: fmt(client.state) },
     { label: "PAN Number", value: fmtNA(client.pan_number) },
     { label: "GST Number", value: fmtNA(client.gst_number) },
     { label: "Created At", value: fmtDateTime(client.created_at) },
+
+    // Internal company POC (kept at the very end)
+    { label: "POC", value: formatPocLabel(client.poc) },
   ];
 
   return (
     <div className="p-[30px] bg-[#f5f7fb] min-h-screen">
-      {/* Title chip (same as other pages) */}
+      {/* Title chip */}
       <div className="mb-4 bg-[#ffffff] p-[10px] border-curve mb-[30px]">
         <h2 className="text-xl font-semibold text-gray-800 m-[0]">
           Client Preview
@@ -84,9 +107,9 @@ export default function PreviewClient() {
 
       {/* Card */}
       <div className="bg-[#ffffff] border-curve rounded-xl shadow p-[18px] md:p-[22px]">
-        {/* Two-column “table” with soft blue stripes like the screenshot */}
+        {/* Two-column table */}
         <div className="overflow-hidden rounded-xl">
-          <table className=" border-separate border-spacing-0 w-[100%]">
+          <table className="border-separate border-spacing-0 w-[100%]">
             <tbody>
               {rows.map((r, i) => (
                 <tr
@@ -105,7 +128,7 @@ export default function PreviewClient() {
           </table>
         </div>
 
-        {/* Buttons (bottom-left, like your screenshot) */}
+        {/* Buttons */}
         <div className="mt-5 flex items-center gap-3 mt-[20px]">
           <button
             type="button"

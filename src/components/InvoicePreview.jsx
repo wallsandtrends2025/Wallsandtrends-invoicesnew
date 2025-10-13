@@ -360,12 +360,7 @@ export default function InvoicePreview() {
         >
           Download Tax Invoice PDF
         </button>
-        <button
-          onClick={handleDownloadProforma}
-          className="bg-[#3b5999] text-[#ffffff] px-4 py-2 rounded hover:bg-[#2d4373] text-sm"
-        >
-          Download Proforma PDF
-        </button>
+       
         
       </div>
 

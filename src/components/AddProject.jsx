@@ -14,6 +14,12 @@ export default function AddProject() {
   const [poc, setPoc] = useState("");
   const [selectedServices, setSelectedServices] = useState([]);
   const [clientsData, setClientsData] = useState({});
+
+  // SHOWING PURPOSE ONLY: auto-filled, read-only
+  const [clientPocName, setClientPocName] = useState("");
+  const [clientPocPhone, setClientPocPhone] = useState("");
+  const [clientPocEmail, setClientPocEmail] = useState("");
+
   const [errors, setErrors] = useState({
     projectName: "",
     company: "",
@@ -42,7 +48,6 @@ export default function AddProject() {
     "Vineel Raj WT321",
   ];
 
-  // Format POC as "Name - WT###"
   const formatPoc = (entry) => {
     const parts = entry.split(" ");
     const code = parts.pop();
@@ -128,47 +133,51 @@ export default function AddProject() {
 
   // STRICT group match: show only the group’s clients; show none until company chosen.
   const isClientInCompanyGroup = (clientDoc, comp) => {
-    if (!comp) return false; // nothing until a company is selected
+    if (!comp) return false;
     const targetGroup = companyToGroup[comp];
     if (!targetGroup) return false;
 
     const cg = normalize(clientDoc.company_group);
     const cn = normalize(clientDoc.company_name);
 
-    // Primary: explicit company_group (preferred canonical field)
     if (cg) return cg === normalize(targetGroup);
 
-    // Fallback: legacy company_name mapping
     if (targetGroup === "WT") {
       return cn === "WT" || cn === "WTPL";
     }
     if (targetGroup === "WTX") {
       return cn === "WTX" || cn === "WTXPL";
     }
-
     return false;
   };
 
   const filteredClientOptions = useMemo(() => {
-    if (!company) return []; // keep empty until company is selected
+    if (!company) return [];
     return Object.entries(clientsData)
       .filter(([, data]) => isClientInCompanyGroup(data, company))
       .map(([id, data]) => ({
         value: id,
         label: data.client_name ? data.client_name : id,
       }))
-      // keep alphabetical for nicer UX
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [clientsData, company]);
 
   const handleClientChange = (opt) => {
     setSelectedClient(opt);
     const docData = opt ? clientsData[opt.value] : null;
+
+    // Internal POC prefill
     if (docData?.poc) {
       setPoc(mapShortPocToFull(docData.poc, company));
     } else {
       setPoc("");
     }
+
+    // DISPLAY-ONLY: auto-fill from client; no validation, not saved
+    setClientPocName(docData?.client_poc_name || "");
+    setClientPocPhone(docData?.client_poc_phone || "");
+    setClientPocEmail(docData?.client_poc_email || "");
+
     setErrors((prev) => ({ ...prev, client: "" }));
   };
 
@@ -202,6 +211,7 @@ export default function AddProject() {
         poc,
         services: selectedServices.map((s) => s.value),
         createdAt: new Date(),
+        // NOTE: NOT including client_poc_* here (display only)
       };
 
       if (company === "WT" || company === "WTPL") {
@@ -221,18 +231,17 @@ export default function AddProject() {
   };
 
   // --- UI helpers ---
-  const inputClass = (hasError) =>
+  const inputClass = (hasError, readonly = false) =>
     `w-full border px-4 py-2 rounded-[10px] ${
       hasError
         ? "!border-red-500 !text-red-700 placeholder-red-400 focus:outline-none focus:ring-1 focus:!ring-red-500"
-        : "border-gray-300 text-black focus:outline-none focus:ring-2 focus:ring-gray-200"
+        : `border-gray-300 text-black focus:outline-none ${readonly ? "bg-gray-50" : "focus:ring-2 focus:ring-gray-200"}`
     }`;
 
   const labelClass = (hasError) =>
     `block mb-1 font-semibold ${hasError ? "text-red-700" : "text-black"}`;
 
-  const helpText = (msg) =>
-    msg && <p className="text-red-600 text-sm mt-1">{msg}</p>;
+  const helpText = (msg) => msg && <p className="text-red-600 text-sm mt-1">{msg}</p>;
 
   // react-select theme
   const rsStyles = {
@@ -295,7 +304,18 @@ export default function AddProject() {
                   setPoc("");
                   setMovieName("");
                   setBrandName("");
-                  if (errors.company) setErrors((p) => ({ ...p, company: "" }));
+                  // clear display-only fields
+                  setClientPocName("");
+                  setClientPocPhone("");
+                  setClientPocEmail("");
+                  setErrors((p) => ({
+                    ...p,
+                    company: "",
+                    client: "",
+                    poc: "",
+                    movieName: "",
+                    brandName: "",
+                  }));
                 }}
                 className={`${inputClass(!!errors.company)} border-curve`}
                 required
@@ -309,7 +329,7 @@ export default function AddProject() {
               {helpText(errors.company)}
             </div>
 
-            {/* Row 1.5: Client */}
+            {/* Row 2: Client | Movie/Brand (conditional) */}
             <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
               <label className={labelClass(!!errors.client)}>Select Client</label>
               <Select
@@ -330,7 +350,6 @@ export default function AddProject() {
               {helpText(errors.client)}
             </div>
 
-            {/* Conditional: Movie/Brand | POC */}
             {(company === "WT" || company === "WTPL") && (
               <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
                 <label className={labelClass(!!errors.movieName)}>Movie Name</label>
@@ -347,7 +366,6 @@ export default function AddProject() {
                 {helpText(errors.movieName)}
               </div>
             )}
-
             {(company === "WTX" || company === "WTXPL") && (
               <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
                 <label className={labelClass(!!errors.brandName)}>Brand Name</label>
@@ -364,6 +382,38 @@ export default function AddProject() {
                 {helpText(errors.brandName)}
               </div>
             )}
+
+            {/* Row 3: Client POC Name | Client POC Number (DISPLAY ONLY) */}
+            <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
+              <label className={labelClass(false)}>Client POC Name (from client)</label>
+              <input
+                value={clientPocName}
+                readOnly
+                className={`${inputClass(false, true)} border-curve`}
+                placeholder="—"
+              />
+            </div>
+
+            <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
+              <label className={labelClass(false)}>Client POC Number (from client)</label>
+              <input
+                value={clientPocPhone}
+                readOnly
+                className={`${inputClass(false, true)} border-curve`}
+                placeholder="—"
+              />
+            </div>
+
+            {/* Row 4: Client POC Email (DISPLAY ONLY) | POC (internal) */}
+            <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
+              <label className={labelClass(false)}>Client POC Email (from client)</label>
+              <input
+                value={clientPocEmail}
+                readOnly
+                className={`${inputClass(false, true)} border-curve`}
+                placeholder="—"
+              />
+            </div>
 
             <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
               <label className={labelClass(!!errors.poc)}>POC</label>
@@ -385,7 +435,7 @@ export default function AddProject() {
               {helpText(errors.poc)}
             </div>
 
-            {/* Services */}
+            {/* Row 5: Services | spacer */}
             <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
               <label className={labelClass(false)}>Select Services</label>
               <Select
@@ -416,7 +466,7 @@ export default function AddProject() {
                   type="button"
                   onClick={(e) => {
                     e.preventDefault();
-                    // Clear all form fields - make the form empty as requested
+                    // Clear all fields
                     setProjectName("");
                     setCompany("");
                     setMovieName("");
@@ -424,6 +474,9 @@ export default function AddProject() {
                     setSelectedClient(null);
                     setPoc("");
                     setSelectedServices([]);
+                    setClientPocName("");
+                    setClientPocPhone("");
+                    setClientPocEmail("");
                     setErrors({
                       projectName: "",
                       company: "",

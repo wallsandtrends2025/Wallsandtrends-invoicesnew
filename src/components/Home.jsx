@@ -610,8 +610,8 @@ export default function Home() {
   return (
     <div style={{ background: 'var(--page-bg)' }} className="p-4 sm:p-6">
       {/* Debug info */}
-      <div className="mb-4 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
-        <strong>Debug:</strong> Loading: {loading ? 'Yes' : 'No'}, Invoices: {invoices.length}
+      <div className="mb-4 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm  text-[#3b5997]">
+        Invoices: {invoices.length}
       </div>
 
       {/* Real-time indicator */}

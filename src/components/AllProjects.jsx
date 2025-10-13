@@ -80,6 +80,11 @@ export default function AllProjects() {
             let clientPoc = "";
             let clientCompany = "—";
 
+            // New: will use as fallback for client POC contact details
+            let fallbackClientPOCName = "";
+            let fallbackClientPOCPhone = "";
+            let fallbackClientPOCEmail = "";
+
             if (project.clientId) {
               try {
                 const clientRef = doc(db, "clients", project.clientId);
@@ -87,7 +92,6 @@ export default function AllProjects() {
                 if (clientDoc.exists()) {
                   const c = clientDoc.data();
 
-                  // match AllClients: client_name is the canonical field
                   clientName =
                     c.client_name ||
                     c.name ||
@@ -97,19 +101,34 @@ export default function AllProjects() {
                   clientPocRaw = c.poc || "";
                   clientPoc = formatPocLabel(clientPocRaw);
 
-                  // same "Company" logic as AllClients (for the client entity)
                   clientCompany = getClientCompany(c);
+
+                  // fallbacks for the 3 client POC fields
+                  fallbackClientPOCName = c.client_poc_name || "";
+                  fallbackClientPOCPhone = c.client_poc_phone || "";
+                  fallbackClientPOCEmail = (c.client_poc_email || "").trim();
                 }
               } catch (err) {
                 console.warn("Failed to read client:", project.clientId, err);
               }
             }
 
+            // Prefer values saved on project; otherwise fallback to client doc
+            const client_poc_name =
+              (project.client_poc_name || "").trim() || fallbackClientPOCName || "";
+            const client_poc_phone =
+              (project.client_poc_phone || "").trim() || fallbackClientPOCPhone || "";
+            const client_poc_email =
+              (project.client_poc_email || "").trim() || fallbackClientPOCEmail || "";
+
             return {
               ...project,
               clientName,
-              clientPoc,     // formatted like "Name - WT120"
+              clientPoc,     // formatted like "Name - WT120" (internal POC)
               clientCompany, // resolved from company_group || company_name
+              client_poc_name,
+              client_poc_phone,
+              client_poc_email,
             };
           })
         );
@@ -163,11 +182,18 @@ export default function AllProjects() {
   const filteredProjects = useMemo(() => {
     const q = (searchTerm || "").toLowerCase();
     if (!q) return projects;
-    return projects.filter(
-      (project) =>
-        (project.projectName || "").toLowerCase().includes(q) ||
-        (project.clientName || "").toLowerCase().includes(q) ||
-        (project.clientCompany || "").toLowerCase().includes(q)
+    return projects.filter((project) =>
+      [
+        project.projectName,
+        project.clientName,
+        project.clientCompany,
+        project.client_poc_name,
+        project.client_poc_phone,
+        project.client_poc_email,
+        project.poc, // internal POC
+      ]
+        .map((s) => String(s || "").toLowerCase())
+        .some((s) => s.includes(q))
     );
   }, [projects, searchTerm]);
 
@@ -181,10 +207,7 @@ export default function AllProjects() {
   const isShowAll = pageSize === "all";
   const effectivePageSize = isShowAll ? totalRows || 1 : pageSize;
 
-  const totalPages = Math.max(
-    1,
-    isShowAll ? 1 : Math.ceil(totalRows / effectivePageSize)
-  );
+  const totalPages = Math.max(1, isShowAll ? 1 : Math.ceil(totalRows / effectivePageSize));
   const startIdx = isShowAll ? 0 : (page - 1) * effectivePageSize;
   const endIdx = isShowAll ? totalRows : Math.min(startIdx + effectivePageSize, totalRows);
 
@@ -382,7 +405,7 @@ export default function AllProjects() {
         <div className="w-full md:w-1/3">
           <input
             type="text"
-            placeholder="Search by project, client, or client company"
+            placeholder="Search by project, client, client POC, or client company"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full bg-white text-gray-800"
@@ -411,6 +434,9 @@ export default function AllProjects() {
                       "Project Name",
                       "Company",
                       "Client",
+                      "Client POC Name",
+                      "Client POC Number",
+                      "Client POC Email",
                       "POC",
                       "Movie / Brand",
                       "Services",
@@ -446,16 +472,35 @@ export default function AllProjects() {
                         {project.company || "—"}
                       </td>
 
-                      {/* Client name (and optional client company suffix) */}
+                      {/* Client name (with optional company suffix) */}
                       <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap p-[10px]">
                         {project.clientName ? `${project.clientName}` : "—"}
-                        {/* Uncomment to show client's company next to the name */}
                         {project.clientCompany && project.clientCompany !== "—" ? (
                           <span className="text-gray-500"> — {project.clientCompany}</span>
                         ) : null}
                       </td>
 
-                      {/* POC formatted like AllClients */}
+                      {/* NEW: Client POC fields (from project or fallback to client) */}
+                      <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap p-[10px]">
+                        {project.client_poc_name || "—"}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap p-[10px]">
+                        {project.client_poc_phone || "—"}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap p-[10px]">
+                        {project.client_poc_email ? (
+                          <a
+                            href={`mailto:${project.client_poc_email}`}
+                            className="underline text-blue-700 hover:text-blue-900"
+                          >
+                            {project.client_poc_email}
+                          </a>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+
+                      {/* Internal POC formatted like AllClients */}
                       <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap p-[10px]">
                         {project.clientPoc || formatPocLabel(project.poc) || "—"}
                       </td>
@@ -524,7 +569,7 @@ export default function AllProjects() {
             </div>
           </div>
 
-          {/* Bottom pagination bar (hidden automatically when totalPages <= 1) */}
+          {/* Bottom pagination bar */}
           {pageSize !== "all" && (
             <div className="flex justify-end mt-6">
               <PaginationBar />
