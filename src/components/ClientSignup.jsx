@@ -16,6 +16,10 @@ export default function ClientSignup() {
     state: "",
     pan_number: "",
     gst_number: "",
+    // Client POC details
+    client_poc_name: "",
+    client_poc_phone: "",
+    client_poc_email: "",
   });
 
   const [errors, setErrors] = useState({
@@ -30,6 +34,9 @@ export default function ClientSignup() {
     pan: "",
     gst: "",
     pan_gst: "",
+    client_poc_name: "",
+    client_poc_phone: "",
+    client_poc_email: "",
   });
 
   const [touched, setTouched] = useState({
@@ -43,11 +50,14 @@ export default function ClientSignup() {
     state: false,
     pan_number: false,
     gst_number: false,
+    client_poc_name: false,
+    client_poc_phone: false,
+    client_poc_email: false,
   });
 
   const navigate = useNavigate();
 
-  // --- POC mapping ---
+  // --- POC mapping (internal) ---
   const pocByGroup = {
     WT: [
       "Suryadevara Veda Sai Krishna WT120",
@@ -173,6 +183,12 @@ export default function ClientSignup() {
     setErrors((prev) => ({ ...prev, phone: phoneErr }));
   };
 
+  const handleClientPocPhoneBlur = () => {
+    markFieldAsTouched("client_poc_phone");
+    const phoneErr = validatePhone(client.client_poc_phone, client.country, false);
+    setErrors((prev) => ({ ...prev, client_poc_phone: phoneErr }));
+  };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
 
@@ -186,18 +202,13 @@ export default function ClientSignup() {
       return;
     }
 
-    if (name === "poc") {
-      setField("poc", value);
-      if (value) setErrors((prev) => ({ ...prev, poc: "" }));
-      return;
-    }
-
     if (name === "country") {
       setClient((prev) => ({ ...prev, country: value, state: "" }));
       setErrors((prev) => ({
         ...prev,
         country: value ? "" : "Country is required.",
         phone: validatePhone(client.phone, value),
+        client_poc_phone: validatePhone(client.client_poc_phone, value),
         state: "",
       }));
       return;
@@ -223,6 +234,26 @@ export default function ClientSignup() {
       return;
     }
 
+    if (name === "client_poc_phone") {
+      let cleaned = value.replace(/\D/g, "");
+      cleaned = isIndia(client.country) ? cleaned.slice(0, 10) : cleaned.slice(0, 15);
+      setClient((prev) => ({ ...prev, client_poc_phone: cleaned }));
+      if (errors.client_poc_phone) setErrors((prev) => ({ ...prev, client_poc_phone: "" }));
+      return;
+    }
+
+    if (name === "client_poc_email") {
+      const v = value.trim();
+      setClient((prev) => ({ ...prev, client_poc_email: v }));
+      setErrors((prev) => ({ ...prev, client_poc_email: validateEmail(v) }));
+      return;
+    }
+
+    if (name === "client_poc_name") {
+      setField("client_poc_name", value);
+      return;
+    }
+
     if (name === "pan_number") {
       const v = value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
       const nextPanErr = validatePAN(v);
@@ -241,6 +272,12 @@ export default function ClientSignup() {
       return;
     }
 
+    if (name === "poc") {
+      setField("poc", value);
+      if (value) setErrors((prev) => ({ ...prev, poc: "" }));
+      return;
+    }
+
     setField(name, value);
   };
 
@@ -249,6 +286,13 @@ export default function ClientSignup() {
 
     const phoneErr = validatePhone(client.phone, client.country, true);
     const emailErr = validateEmail(client.email);
+
+    const clientPocPhoneErr = validatePhone(client.client_poc_phone, client.country, true);
+    const clientPocEmailErr = validateEmail(client.client_poc_email);
+    const clientPocNameErr =
+      !client.client_poc_name || !client.client_poc_name.trim()
+        ? "Client POC name is required."
+        : "";
 
     let panErr = "";
     if (!client.pan_number) {
@@ -273,19 +317,21 @@ export default function ClientSignup() {
     const requiredFields = [
       "client_name",
       "company_group",
-      "poc",
       "email",
       "address",
       "country",
       "state",
+      "client_poc_name",
+      "client_poc_phone",
+      "client_poc_email",
+      "poc", // internal POC still required
     ];
+
     const reqErrors = {};
     requiredFields.forEach((field) => {
       const value = client[field];
       const isEmpty = !value || String(value).trim() === "";
-      if (isEmpty) {
-        reqErrors[field] = `${field.replaceAll("_", " ")} is required.`;
-      }
+      if (isEmpty) reqErrors[field] = `${field.replaceAll("_", " ")} is required.`;
     });
 
     setErrors((prev) => ({
@@ -296,6 +342,9 @@ export default function ClientSignup() {
       pan: panErr,
       gst: gstErr,
       pan_gst: panGstErr,
+      client_poc_name: clientPocNameErr || reqErrors.client_poc_name || "",
+      client_poc_phone: clientPocPhoneErr || reqErrors.client_poc_phone || "",
+      client_poc_email: clientPocEmailErr || reqErrors.client_poc_email || "",
     }));
 
     const hasAnyError =
@@ -304,15 +353,16 @@ export default function ClientSignup() {
       panErr ||
       gstErr ||
       panGstErr ||
+      clientPocNameErr ||
+      clientPocPhoneErr ||
+      clientPocEmailErr ||
       Object.values(reqErrors).some(Boolean);
 
     if (hasAnyError) return;
 
     // Safer doc id
     const rawId = `${client.company_group}_${client.client_name}`.trim();
-    const docId = rawId
-      .replace(/\s+/g, "_")
-      .replace(/[#/\\?%*:|"<>.]/g, "_");
+    const docId = rawId.replace(/\s+/g, "_").replace(/[#/\\?%*:|"<>.]/g, "_");
 
     const finalData = {
       ...client,
@@ -321,6 +371,7 @@ export default function ClientSignup() {
       poc: client.poc,
       pan_number: client.pan_number.toUpperCase().trim(),
       gst_number: client.gst_number.toUpperCase().trim(),
+      client_poc_email: client.client_poc_email.trim(),
       created_at: Timestamp.now(),
     };
 
@@ -449,37 +500,11 @@ export default function ClientSignup() {
               {helpText(errors.state)}
             </div>
 
-            {/* Row 3: POC | spacer */}
-            <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
-              <label className={labelClass(!!errors.poc)}>POC</label>
-              <select
-                name="poc"
-                value={client.poc}
-                onChange={handleChange}
-                className={`${inputClass(!!errors.poc)} border-curve`}
-                disabled={!client.company_group}
-                required
-              >
-                <option value="">
-                  {client.company_group ? "Select POC" : "Select company first"}
-                </option>
-                {currentPocOptions.map((p) => (
-                  <option key={p} value={p}>
-                    {formatPocLabel(p)}
-                  </option>
-                ))}
-              </select>
-              {helpText(errors.poc)}
-            </div>
-
-            <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">{/* spacer */}</div>
-
-            {/* Row 4: Phone + Email + Address */}
+            {/* Row 3: Phone + Email + Address */}
             <div className="col-span-2">
               <div className="grid grid-cols-2 gap-6 items-stretch">
-                {/* LEFT COLUMN */}
+                {/* LEFT: Phone + Email */}
                 <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px] flex flex-col gap-4">
-                  {/* Phone */}
                   <div className="flex flex-col">
                     <label className={labelClass(!!errors.phone)}>Phone Number</label>
                     <input
@@ -495,7 +520,6 @@ export default function ClientSignup() {
                     {helpText(errors.phone)}
                   </div>
 
-                  {/* Email */}
                   <div className="flex flex-col">
                     <label className={labelClass(!!errors.email)}>Email</label>
                     <input
@@ -511,7 +535,7 @@ export default function ClientSignup() {
                   </div>
                 </div>
 
-                {/* RIGHT COLUMN: Address */}
+                {/* RIGHT: Address */}
                 <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px] flex flex-col">
                   <label className={labelClass(!!errors.address)}>Address</label>
                   <textarea
@@ -527,7 +551,7 @@ export default function ClientSignup() {
               </div>
             </div>
 
-            {/* Row 5: PAN | GST */}
+            {/* Row 4: PAN | GST */}
             <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
               <label className={labelClass(!!errors.pan || !!errors.pan_gst)}>PAN Number</label>
               <input
@@ -559,8 +583,75 @@ export default function ClientSignup() {
             {/* Cross-field error */}
             {errors.pan_gst && <div className="col-span-2">{helpText(errors.pan_gst)}</div>}
 
+            {/* Row 5: Client POC Name | Client POC Number */}
+            <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
+              <label className={labelClass(!!errors.client_poc_name)}>Client POC Name</label>
+              <input
+                name="client_poc_name"
+                value={client.client_poc_name}
+                onChange={handleChange}
+                className={`${inputClass(!!errors.client_poc_name)} border-curve`}
+                placeholder="Client POC Name"
+                required
+              />
+              {helpText(errors.client_poc_name)}
+            </div>
+
+            <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
+              <label className={labelClass(!!errors.client_poc_phone)}>Client POC Number</label>
+              <input
+                name="client_poc_phone"
+                type="tel"
+                value={client.client_poc_phone}
+                onChange={handleChange}
+                onBlur={handleClientPocPhoneBlur}
+                className={`${inputClass(!!errors.client_poc_phone)} border-curve`}
+                placeholder={isIndia(client.country) ? "9876543210" : "Enter 7-15 digit number"}
+                required
+              />
+              {helpText(errors.client_poc_phone)}
+            </div>
+
+            {/* Row 6: Client POC Email (full width) */}
+            <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px] ">
+              <label className={labelClass(!!errors.client_poc_email)}>Client POC Email</label>
+              <input
+                name="client_poc_email"
+                type="email"
+                value={client.client_poc_email}
+                onChange={handleChange}
+                className={`${inputClass(!!errors.client_poc_email)} border-curve`}
+                placeholder="poc.name@client.com"
+                required
+              />
+              {helpText(errors.client_poc_email)}
+            </div>
+
+            {/* Row 7 (LAST): POC (internal) full width */}
+            <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px] ">
+              <label className={labelClass(!!errors.poc)}>POC</label>
+              <select
+                name="poc"
+                value={client.poc}
+                onChange={handleChange}
+                className={`${inputClass(!!errors.poc)} border-curve`}
+                disabled={!client.company_group}
+                required
+              >
+                <option value="">
+                  {client.company_group ? "Select POC" : "Select company first"}
+                </option>
+                {currentPocOptions.map((p) => (
+                  <option key={p} value={p}>
+                    {formatPocLabel(p)}
+                  </option>
+                ))}
+              </select>
+              {helpText(errors.poc)}
+            </div>
+
             {/* Submit Buttons */}
-            <div className=" flex justify-center pt-[10px] pb-[10px] col-span-2">
+            <div className="flex justify-center pt-[10px] pb-[10px] col-span-2">
               <div className="flex gap-3 w-full max-w-xs">
                 <button
                   type="submit"
@@ -573,7 +664,6 @@ export default function ClientSignup() {
                   type="button"
                   onClick={(e) => {
                     e.preventDefault();
-                    // Clear all form fields - make the form empty as requested
                     setClient({
                       client_name: "",
                       company_group: "",
@@ -585,6 +675,9 @@ export default function ClientSignup() {
                       state: "",
                       pan_number: "",
                       gst_number: "",
+                      client_poc_name: "",
+                      client_poc_phone: "",
+                      client_poc_email: "",
                     });
                     setErrors({
                       client_name: "",
@@ -598,6 +691,9 @@ export default function ClientSignup() {
                       pan: "",
                       gst: "",
                       pan_gst: "",
+                      client_poc_name: "",
+                      client_poc_phone: "",
+                      client_poc_email: "",
                     });
                     setTouched({
                       client_name: false,
@@ -610,8 +706,10 @@ export default function ClientSignup() {
                       state: false,
                       pan_number: false,
                       gst_number: false,
+                      client_poc_name: false,
+                      client_poc_phone: false,
+                      client_poc_email: false,
                     });
-                    // Think like 20 years software developer - do not touch anything
                     console.log("Clear from button clicked - cleared form as requested");
                   }}
                   className="bg-[#3b5997] text-[#ffffff] font-semibold rounded-[10px] flex-1 h-[40px] border-0 hover:bg-[#3b5997] transition-colors"

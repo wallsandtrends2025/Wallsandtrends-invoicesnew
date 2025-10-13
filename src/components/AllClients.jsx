@@ -13,7 +13,7 @@ export default function AllClients() {
 
   const navigate = useNavigate();
 
-  // NEW: track which row's action menu is open
+  // Track which row's action menu is open
   const [openMenuForId, setOpenMenuForId] = useState(null);
 
   // --- Helper: format POC like "Name - WT120" from "Name WT120"
@@ -47,25 +47,9 @@ export default function AllClients() {
         const snapshot = await getDocs(collection(db, "clients"));
         const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-        // DEBUG: verify fields present
-        console.log("=== DEBUG: Client Data Structure ===");
-        if (list.length > 0) {
-          console.log("Sample client data:", list[0]);
-          console.log("Available fields:", Object.keys(list[0]));
-          console.log("company_group:", list[0].company_group, "company_name:", list[0].company_name);
-        }
-
-        console.log("=== DEBUG: Company fields overview ===");
-        const groups = [...new Set(list.map((c) => c.company_group).filter(Boolean))];
-        const names  = [...new Set(list.map((c) => c.company_name).filter(Boolean))];
-        console.log("Unique company_group:", groups);
-        console.log("Unique company_name:", names);
-
         // Sort by client_name (case-insensitive)
         list.sort((a, b) =>
-          (a.client_name || "")
-            .toLowerCase()
-            .localeCompare((b.client_name || "").toLowerCase())
+          (a.client_name || "").toLowerCase().localeCompare((b.client_name || "").toLowerCase())
         );
 
         setClients(list);
@@ -84,10 +68,7 @@ export default function AllClients() {
   const isShowAll = pageSize === "all";
   const effectivePageSize = isShowAll ? totalRows || 1 : pageSize;
 
-  const totalPages = Math.max(
-    1,
-    isShowAll ? 1 : Math.ceil(totalRows / effectivePageSize)
-  );
+  const totalPages = Math.max(1, isShowAll ? 1 : Math.ceil(totalRows / effectivePageSize));
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -106,16 +87,10 @@ export default function AllClients() {
       await deleteDoc(doc(db, "clients", id));
       setClients((prev) => {
         const next = prev.filter((c) => c.id !== id);
-        // Re-sort
         next.sort((a, b) =>
-          (a.client_name || "")
-            .toLowerCase()
-            .localeCompare((b.client_name || "").toLowerCase())
+          (a.client_name || "").toLowerCase().localeCompare((b.client_name || "").toLowerCase())
         );
-        // Recompute pages
-        const nextTotalPages = isShowAll
-          ? 1
-          : Math.max(1, Math.ceil(next.length / effectivePageSize));
+        const nextTotalPages = isShowAll ? 1 : Math.max(1, Math.ceil(next.length / effectivePageSize));
         if (page > nextTotalPages) setPage(nextTotalPages);
         return next;
       });
@@ -165,20 +140,13 @@ export default function AllClients() {
     const visible = getVisiblePages(page, totalPages);
     return (
       <div className="flex items-center gap-2">
-        <PagePill
-          disabled={page === 1}
-          onClick={() => setPage(Math.max(1, page - 1))}
-        >
+        <PagePill disabled={page === 1} onClick={() => setPage(Math.max(1, page - 1))}>
           ‹
         </PagePill>
 
         {visible.map((p, i) =>
           typeof p === "number" ? (
-            <PagePill
-              key={`${p}-${i}`}
-              active={p === page}
-              onClick={() => setPage(p)}
-            >
+            <PagePill key={`${p}-${i}`} active={p === page} onClick={() => setPage(p)}>
               {p}
             </PagePill>
           ) : (
@@ -188,10 +156,7 @@ export default function AllClients() {
           )
         )}
 
-        <PagePill
-          disabled={page === totalPages}
-          onClick={() => setPage(Math.min(totalPages, page + 1))}
-        >
+        <PagePill disabled={page === totalPages} onClick={() => setPage(Math.min(totalPages, page + 1))}>
           ›
         </PagePill>
       </div>
@@ -235,8 +200,7 @@ export default function AllClients() {
 
       <span className="text-sm text-gray-600">
         Showing <strong>{totalRows ? (isShowAll ? 1 : startIdx + 1) : 0}</strong>–
-        <strong>{isShowAll ? totalRows : endIdx}</strong> of{" "}
-        <strong>{totalRows}</strong>
+        <strong>{isShowAll ? totalRows : endIdx}</strong> of <strong>{totalRows}</strong>
       </span>
     </div>
   );
@@ -254,13 +218,9 @@ export default function AllClients() {
       </div>
 
       {loading ? (
-        <div className="bg-white rounded-xl shadow p-8 text-center text-gray-500">
-          Loading...
-        </div>
+        <div className="bg-white rounded-xl shadow p-8 text-center text-gray-500">Loading...</div>
       ) : totalRows === 0 ? (
-        <div className="bg-white rounded-xl shadow p-8 text-center text-gray-500">
-          No clients found.
-        </div>
+        <div className="bg-white rounded-xl shadow p-8 text-center text-gray-500">No clients found.</div>
       ) : (
         <>
           {/* Card with table */}
@@ -275,6 +235,9 @@ export default function AllClients() {
                       "POC",
                       "Phone",
                       "Email",
+                      "Client POC Name",
+                      "Client POC Number",
+                      "Client POC Email",
                       "Country",
                       "State",
                       "Address",
@@ -283,10 +246,7 @@ export default function AllClients() {
                       "Created",
                       "Actions",
                     ].map((h) => (
-                      <th
-                        key={h}
-                        className="px-6 py-4 font-semibold text-sm text-center p-[10px]"
-                      >
+                      <th key={h} className="px-6 py-4 font-semibold text-sm text-center p-[10px]">
                         {h}
                       </th>
                     ))}
@@ -316,15 +276,25 @@ export default function AllClients() {
                       <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap p-[10px]">
                         {c.email || "—"}
                       </td>
+
+                      {/* NEW: Client POC columns */}
+                      <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap p-[10px]">
+                        {c.client_poc_name || "—"}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap p-[10px]">
+                        {c.client_poc_phone || "—"}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap p-[10px]">
+                        {c.client_poc_email || "—"}
+                      </td>
+
                       <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap p-[10px]">
                         {c.country || "—"}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap p-[10px]">
                         {c.state || "—"}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-800 p-[10px]">
-                        {c.address || "—"}
-                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-800 p-[10px]">{c.address || "—"}</td>
                       <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap p-[10px]">
                         {c.pan_number || "—"}
                       </td>
@@ -413,22 +383,13 @@ function DotsMenu({ isOpen, onToggle, renderBubble }) {
   );
 }
 
-function RowActionsBubble({
-  onEdit,
-  onDelete,
-  onPreview,
-  anchorRef,
-  onClose,
-}) {
+function RowActionsBubble({ onEdit, onDelete, onPreview, anchorRef, onClose }) {
   const bubbleRef = useRef(null);
 
   useEffect(() => {
     const onClick = (e) => {
       if (!bubbleRef.current) return;
-      if (
-        !bubbleRef.current.contains(e.target) &&
-        !anchorRef.current?.contains(e.target)
-      ) {
+      if (!bubbleRef.current.contains(e.target) && !anchorRef.current?.contains(e.target)) {
         onClose?.();
       }
     };
@@ -444,10 +405,7 @@ function RowActionsBubble({
     const GAP_Y = 56; // how far above the dots
     const BUBBLE_W = 360; // approximate width
     const top = rect.top + window.scrollY - GAP_Y;
-    const left = Math.max(
-      12,
-      rect.left + window.scrollX - (BUBBLE_W - rect.width) + 8
-    );
+    const left = Math.max(12, rect.left + window.scrollX - (BUBBLE_W - rect.width) + 8);
     setPos({ top, left });
   }, [anchorRef]);
 

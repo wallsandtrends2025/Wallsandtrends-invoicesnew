@@ -365,7 +365,7 @@ export default function AllInvoices() {
                         key={h.label}
                         className={[
                           "px-6 py-4 font-semibold text-sm text-center select-none  p-[10px]",
-                          h.sortable === false ? "" : "cursor-pointer hover:bg-gray-100",
+                          h.sortable === false ? "" : "cursor-pointer ",
                           h.key === "total_amount" ? "text-right" : "text-center",
                         ].join(" ")}
                         onClick={() => (h.sortable === false ? null : requestSort(h.key))}

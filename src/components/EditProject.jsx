@@ -23,6 +23,10 @@ export default function EditProject() {
     services: [],          // react-select options
     invoiceIds: [],        // react-select options
     quotationIds: [],      // react-select options
+    // ✨ Editable client POC fields (saved on project)
+    client_poc_name: "",
+    client_poc_phone: "",
+    client_poc_email: "",
   });
 
   const [errors, setErrors] = useState({
@@ -41,33 +45,12 @@ export default function EditProject() {
 
   // ----- Service options (as Select options) -----
   const serviceOptions = [
-    "Lyrical Videos",
-    "Posters",
-    "Digital Creatives",
-    "Motion Posters",
-    "Title Animations",
-    "Marketing",
-    "Editing",
-    "Teaser",
-    "Trailer",
-    "Promos",
-    "Google Ads",
-    "YouTube Ads",
-    "Influencer Marketing",
-    "Meme Marketing",
-    "Open and end titles",
-    "Pitch Deck",
-    "Branding",
-    "Strategy & Marketing",
-    "Creative design & editing",
-    "Digital Marketing",
-    "Content & video production",
-    "Performance Marketing",
-    "Web Development",
-    "Ad Film",
-    "⁠Brand Film",
-    "⁠Corporate Film",
-    "⁠Teaser + Trailer + Business cut",
+    "Lyrical Videos","Posters","Digital Creatives","Motion Posters","Title Animations",
+    "Marketing","Editing","Teaser","Trailer","Promos","Google Ads","YouTube Ads",
+    "Influencer Marketing","Meme Marketing","Open and end titles","Pitch Deck","Branding",
+    "Strategy & Marketing","Creative design & editing","Digital Marketing",
+    "Content & video production","Performance Marketing","Web Development",
+    "Ad Film","⁠Brand Film","⁠Corporate Film","⁠Teaser + Trailer + Business cut",
   ].map((s) => ({ label: s, value: s }));
 
   // ----- Company grouping (strict) -----
@@ -75,16 +58,9 @@ export default function EditProject() {
   const isWTGroup  = (c) => ["WT", "WTPL"].includes(c);
   const isWTXGroup = (c) => ["WTX", "WTXPL"].includes(c);
 
-  const companyToGroup = {
-    WT: "WT",
-    WTPL: "WT",
-    WTX: "WTX",
-    WTXPL: "WTX",
-  };
-
+  const companyToGroup = { WT: "WT", WTPL: "WT", WTX: "WTX", WTXPL: "WTX" };
   const normalize = (s) => String(s || "").toUpperCase().trim();
 
-  // Strictly allow only clients matching the chosen company group
   const isClientInCompanyGroup = (clientDoc, comp) => {
     if (!comp) return false;
     const targetGroup = companyToGroup[comp];
@@ -93,16 +69,9 @@ export default function EditProject() {
     const cg = normalize(clientDoc.company_group);
     const cn = normalize(clientDoc.company_name);
 
-    // Prefer the canonical 'company_group' if present
     if (cg) return cg === normalize(targetGroup);
-
-    // Fallback: legacy mapping via 'company_name'
-    if (targetGroup === "WT") {
-      return cn === "WT" || cn === "WTPL";
-    }
-    if (targetGroup === "WTX") {
-      return cn === "WTX" || cn === "WTXPL";
-    }
+    if (targetGroup === "WT")  return cn === "WT"  || cn === "WTPL";
+    if (targetGroup === "WTX") return cn === "WTX" || cn === "WTXPL";
     return false;
   };
 
@@ -110,15 +79,11 @@ export default function EditProject() {
     if (!project.company) return [];
     return Object.entries(clientsData)
       .filter(([, data]) => isClientInCompanyGroup(data, project.company))
-      .map(([id, data]) => ({
-        value: id,
-        label: data.client_name ? data.client_name : id,
-      }))
+      .map(([id, data]) => ({ value: id, label: data.client_name ? data.client_name : id }))
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [clientsData, project.company]);
 
-  // ----- POC master lists (same as AddProject) -----
-  // Base entries are "Name WT###"; we'll format them to "Name - WT###"
+  // ----- POC lists -----
   const WT_WTPL_POCs_BASE = [
     "Suryadevara Veda sai Krishna WT120",
     "Koduru Abhilash Reddy WT146",
@@ -135,41 +100,31 @@ export default function EditProject() {
     "Sharvana Sandhya WT266",
     "Vineel Raj WT321",
   ];
-
-  // "Name WT###" -> "Name - WT###"
   const formatPoc = (entry) => {
     if (!entry) return "";
     const parts = String(entry).trim().split(/\s+/);
     const code = parts.pop();
     const name = parts.join(" ");
-    if (!code || !name) return String(entry);
-    return `${name} - ${code}`;
+    return code && name ? `${name} - ${code}` : String(entry);
   };
-
-  // Normalize any stored/legacy POC to "Name - WT###"
   const normalizeToFormattedPoc = (raw) => {
     if (!raw) return "";
     const s = String(raw).trim();
-    // Already formatted? " - WT###" style
     if (/\s-\s[A-Za-z]{2,}\d{2,}$/i.test(s)) return s;
-    // Unformatted like "Name WT###" ?
     if (/\s[A-Za-z]{2,}\d{2,}$/i.test(s)) return formatPoc(s);
-    return s; // leave as-is if no code found
+    return s;
   };
-
-  // Map short POC text from client doc to fully formatted based on company
   const mapShortPocToFull = (shortName, comp) => {
     if (!shortName) return "";
     const base = isWTGroup(comp) ? WT_WTPL_POCs_BASE : WTX_WTXPL_POCs_BASE;
     const list = base.map(formatPoc);
     const lower = shortName.toLowerCase().trim();
-    let found = list.find((lbl) => lbl.toLowerCase().startsWith(lower));
-    if (found) return found;
-    found = list.find((lbl) => lbl.toLowerCase().includes(lower));
-    return found || shortName;
+    return (
+      list.find((lbl) => lbl.toLowerCase().startsWith(lower)) ||
+      list.find((lbl) => lbl.toLowerCase().includes(lower)) ||
+      shortName
+    );
   };
-
-  // Build POC options based on selected company
   const pocOptions = useMemo(() => {
     const base = isWTGroup(project.company) ? WT_WTPL_POCs_BASE : WTX_WTXPL_POCs_BASE;
     return base.map(formatPoc).map((label) => ({ label, value: label }));
@@ -182,10 +137,7 @@ export default function EditProject() {
         ? "!border-red-500 !text-red-700 placeholder-red-400 focus:outline-none focus:ring-1 focus:!ring-red-500"
         : "border-gray-300 text-black focus:outline-none focus:ring-2 focus:ring-gray-200"
     }`;
-
-  const labelClass = (hasError) =>
-    `block mb-2 font-semibold ${hasError ? "text-red-700" : "text-black"}`;
-
+  const labelClass = (hasError) => `block mb-2 font-semibold ${hasError ? "text-red-700" : "text-black"}`;
   const helpText = (msg) => msg && <p className="text-red-600 text-sm mt-1">{msg}</p>;
 
   const setField = (name, value) => {
@@ -195,7 +147,7 @@ export default function EditProject() {
     }
   };
 
-  // --- Validation (mirror AddProject: movie/brand required based on company) ---
+  // --- Validation (movie/brand required based on company) ---
   const validateRequired = (label, raw) =>
     (Array.isArray(raw) ? raw.length : String(raw || "").trim()) ? "" : `${label} is required.`;
 
@@ -205,18 +157,16 @@ export default function EditProject() {
     e.company = validateRequired("Company", state.company);
     e.clientId = state.clientId?.value ? "" : "Client is required.";
 
-    // POC must be in current options list (formatted)
     const allowed = new Set(pocOptions.map((o) => o.value));
     const normalizedPoc = normalizeToFormattedPoc(state.poc);
     e.poc = normalizedPoc && allowed.has(normalizedPoc) ? "" : "Please select a valid POC for the chosen company.";
 
-    // REQUIRED like AddProject:
     if (isWTGroup(state.company)) {
       e.movieName = validateRequired("Movie Name", state.movieName);
-      e.brandName = ""; // not applicable
+      e.brandName = "";
     } else if (isWTXGroup(state.company)) {
       e.brandName = validateRequired("Brand Name", state.brandName);
-      e.movieName = ""; // not applicable
+      e.movieName = "";
     } else {
       e.movieName = "";
       e.brandName = "";
@@ -244,7 +194,6 @@ export default function EditProject() {
           getDocs(collection(db, "quotations")),
         ]);
 
-        // Clients map for fast lookup and filtering
         const cMap = {};
         clientsSnap.forEach((d) => (cMap[d.id] = d.data() || {}));
         setClientsData(cMap);
@@ -257,65 +206,46 @@ export default function EditProject() {
           .map((d) => ({ id: d.id, ...d.data() }))
           .filter((q) => q.project_id === id);
 
-        const invOptions = invoicesForProject.map((i) => ({
-          value: i.id,
-          label: i.invoice_id || i.id,
-        }));
-        const qtnOptions = quotationsForProject.map((q) => ({
-          value: q.id,
-          label: q.quotation_id || q.id,
-        }));
+        const invOptions = invoicesForProject.map((i) => ({ value: i.id, label: i.invoice_id || i.id }));
+        const qtnOptions = quotationsForProject.map((q) => ({ value: q.id, label: q.quotation_id || q.id }));
 
         setInvoiceOptions(invOptions);
         setQuotationOptions(qtnOptions);
 
-        // Preselected options
         const allClientOptions = Object.entries(cMap).map(([cid, data]) => ({
           value: cid,
           label: data.client_name ? data.client_name : cid,
         }));
 
-        const clientIdRaw =
-          projectData.clientId ||
-          projectData.client_id ||
-          projectData.client ||
-          projectData.clientID;
+        const clientIdRaw = projectData.clientId || projectData.client_id || projectData.client || projectData.clientID;
+        const clientOption = allClientOptions.find((opt) => opt.value === clientIdRaw) || null;
 
-        const clientOption =
-          allClientOptions.find((opt) => opt.value === clientIdRaw) || null;
-
-        const preselectedInvoices = Array.isArray(projectData.invoiceIds)
-          ? projectData.invoiceIds
-              .map((invId) => invOptions.find((o) => o.value === invId))
-              .filter(Boolean)
-          : [];
-
-        const preselectedQuotations = Array.isArray(projectData.quotationIds)
-          ? projectData.quotationIds
-              .map((qId) => qtnOptions.find((o) => o.value === qId))
-              .filter(Boolean)
-          : [];
-
-        const preselectedServices = Array.isArray(projectData.services)
-          ? projectData.services
-              .map((sv) => serviceOptions.find((o) => o.value === sv))
-              .filter(Boolean)
-          : [];
-
-        // Normalize POC on load
         const normalizedPoc = normalizeToFormattedPoc(projectData.poc);
+
+        // Prefill editable POC fields:
+        // Priority: project’s stored values -> client doc values -> empty
+        const fromClient = clientOption ? cMap[clientOption.value] : null;
 
         setProject({
           id: projectSnap.id,
           projectName: projectData.projectName || "",
           company: projectData.company || "",
-          clientId: clientOption,                 // may be out-of-group until user changes company
+          clientId: clientOption,
           poc: normalizedPoc || "",
           movieName: projectData.movieName || "",
           brandName: projectData.brandName || "",
-          services: preselectedServices,
-          invoiceIds: preselectedInvoices,
-          quotationIds: preselectedQuotations,
+          services: Array.isArray(projectData.services)
+            ? projectData.services.map((sv) => ({ label: sv, value: sv }))
+            : [],
+          invoiceIds: Array.isArray(projectData.invoiceIds)
+            ? projectData.invoiceIds.map((invId) => invOptions.find((o) => o.value === invId)).filter(Boolean)
+            : [],
+          quotationIds: Array.isArray(projectData.quotationIds)
+            ? projectData.quotationIds.map((qId) => qtnOptions.find((o) => o.value === qId)).filter(Boolean)
+            : [],
+          client_poc_name: projectData.client_poc_name ?? fromClient?.client_poc_name ?? "",
+          client_poc_phone: projectData.client_poc_phone ?? fromClient?.client_poc_phone ?? "",
+          client_poc_email: projectData.client_poc_email?.trim?.() ?? (fromClient?.client_poc_email || "").trim() ?? "",
         });
 
         setErrors({
@@ -335,19 +265,17 @@ export default function EditProject() {
     };
 
     fetchAll();
-  }, [id, navigate, serviceOptions]);
+  }, [id, navigate]);
 
   // --- Handlers ---
   const onCompanyChange = (opt) => {
     const nextCompany = opt?.value || "";
     setProject((prev) => {
-      // If existing client doesn't belong to the selected company's group, clear it.
       const currClientValid =
         prev.clientId &&
         clientsData[prev.clientId.value] &&
         isClientInCompanyGroup(clientsData[prev.clientId.value], nextCompany);
 
-      // POC must be from the right bucket; otherwise clear.
       const allowedNext = new Set(
         (isWTGroup(nextCompany) ? WT_WTPL_POCs_BASE : WTX_WTXPL_POCs_BASE).map(formatPoc)
       );
@@ -362,16 +290,27 @@ export default function EditProject() {
         poc: nextPoc,
         movieName: isWTGroup(nextCompany) ? prev.movieName : "",
         brandName: isWTXGroup(nextCompany) ? prev.brandName : "",
+        // keep editable client POC values as-is; they are per-project overrides
       };
     });
+
     setErrors((prev) => ({ ...prev, company: "", clientId: "", poc: "", movieName: "", brandName: "" }));
   };
 
   const onClientChange = (opt) => {
-    // Mirror AddProject: when client has a 'poc' in doc, auto-fill formatted POC for selected company
     const docData = opt ? clientsData[opt.value] : null;
     const autoPoc = docData?.poc ? mapShortPocToFull(docData.poc, project.company) : "";
-    setProject((prev) => ({ ...prev, clientId: opt, poc: autoPoc }));
+
+    setProject((prev) => ({
+      ...prev,
+      clientId: opt,
+      poc: autoPoc,
+      // overwrite editable POC fields from the chosen client
+      client_poc_name: docData?.client_poc_name || "",
+      client_poc_phone: docData?.client_poc_phone || "",
+      client_poc_email: (docData?.client_poc_email || "").trim(),
+    }));
+
     setErrors((prev) => ({ ...prev, clientId: "", poc: "" }));
   };
 
@@ -390,6 +329,10 @@ export default function EditProject() {
       services: Array.isArray(project.services) ? project.services.map((s) => s.value) : [],
       invoiceIds: Array.isArray(project.invoiceIds) ? project.invoiceIds.map((i) => i?.value) : [],
       quotationIds: Array.isArray(project.quotationIds) ? project.quotationIds.map((q) => q?.value) : [],
+      // ✅ Save editable client POC fields on the project
+      client_poc_name: project.client_poc_name || "",
+      client_poc_phone: project.client_poc_phone || "",
+      client_poc_email: (project.client_poc_email || "").trim(),
     };
 
     try {
@@ -416,8 +359,7 @@ export default function EditProject() {
     );
   }
 
-  // Ensure current client appears in the filtered list; if not, react-select can still display the value,
-  // but we prefer to let user re-pick when company changes (handled in onCompanyChange).
+  // UI
   return (
     <div className="bg-[#F4F6FF] p-[10px]">
       <div className="max-w-6xl mx-auto">
@@ -433,7 +375,7 @@ export default function EditProject() {
           noValidate
         >
           <div className="grid grid-cols-2 gap-6">
-            {/* Project Name */}
+            {/* Row 1: Project Name | Company */}
             <div className="pl-[15px] pr-[15px] space-y-2">
               <label className={labelClass(!!errors.projectName)}>Project Name</label>
               <input
@@ -447,7 +389,6 @@ export default function EditProject() {
               {helpText(errors.projectName)}
             </div>
 
-            {/* Company */}
             <div className="pl-[15px] pr-[15px] space-y-2">
               <label className={labelClass(!!errors.company)}>Company</label>
               <Select
@@ -463,7 +404,7 @@ export default function EditProject() {
               {helpText(errors.company)}
             </div>
 
-            {/* Client (filtered by company group) */}
+            {/* Row 2: Client | Movie/Brand (conditional) */}
             <div className="pl-[15px] pr-[15px] space-y-2">
               <label className={labelClass(!!errors.clientId)}>Client</label>
               <Select
@@ -485,25 +426,6 @@ export default function EditProject() {
               {helpText(errors.clientId)}
             </div>
 
-            {/* POC (formatted) */}
-            <div className="pl-[15px] pr-[15px] space-y-2">
-              <label className={labelClass(!!errors.poc)}>POC</label>
-              <Select
-                options={pocOptions}
-                value={project.poc ? { label: project.poc, value: project.poc } : null}
-                onChange={(selected) => setField("poc", selected ? selected.value : "")}
-                placeholder='Select POC (e.g., "Lingareddy Navya - WT122")'
-                styles={selectStylesLight}
-                classNamePrefix="rs"
-                isClearable
-                isDisabled={!project.company}
-                menuPortalTarget={document.body}
-                menuPosition="fixed"
-              />
-              {helpText(errors.poc)}
-            </div>
-
-            {/* Movie/Brand (required like AddProject) */}
             {isWTGroup(project.company) ? (
               <div className="pl-[15px] pr-[15px] space-y-2">
                 <label className={labelClass(!!errors.movieName)}>Movie Name</label>
@@ -532,7 +454,65 @@ export default function EditProject() {
               </div>
             )}
 
-            {/* Services */}
+            {/* Row 3: Client POC Name | Client POC Number (EDITABLE) */}
+            <div className="pl-[15px] pr-[15px] space-y-2">
+              <label className={labelClass(false)}>Client POC Name</label>
+              <input
+                name="client_poc_name"
+                value={project.client_poc_name}
+                onChange={(e) => setField("client_poc_name", e.target.value)}
+                className={`${inputClass(false)} border-curve`}
+                placeholder="Client POC Name"
+              />
+            </div>
+
+            <div className="pl-[15px] pr-[15px] space-y-2">
+              <label className={labelClass(false)}>Client POC Number</label>
+              <input
+                name="client_poc_phone"
+                type="tel"
+                value={project.client_poc_phone}
+                onChange={(e) => {
+                  // keep numeric-only like your client form
+                  const digits = e.target.value.replace(/\D/g, "").slice(0, 15);
+                  setField("client_poc_phone", digits);
+                }}
+                className={`${inputClass(false)} border-curve`}
+                placeholder="9876543210"
+              />
+            </div>
+
+            {/* Row 4: Client POC Email (EDITABLE) | POC (internal) */}
+            <div className="pl-[15px] pr-[15px] space-y-2">
+              <label className={labelClass(false)}>Client POC Email</label>
+              <input
+                name="client_poc_email"
+                type="email"
+                value={project.client_poc_email}
+                onChange={(e) => setField("client_poc_email", e.target.value)}
+                className={`${inputClass(false)} border-curve`}
+                placeholder="poc.name@client.com"
+              />
+            </div>
+
+            <div className="pl-[15px] pr-[15px] space-y-2">
+              <label className={labelClass(!!errors.poc)}>POC</label>
+              <Select
+                options={pocOptions}
+                value={project.poc ? { label: project.poc, value: project.poc } : null}
+                onChange={(selected) => setField("poc", selected ? selected.value : "")}
+                placeholder='Select POC (e.g., "Lingareddy Navya - WT122")'
+                styles={selectStylesLight}
+                classNamePrefix="rs"
+                isClearable
+                isDisabled={!project.company}
+                menuPortalTarget={document.body}
+                menuPosition="fixed"
+              />
+              {helpText(errors.poc)}
+            </div>
+
+            {/* Row 5: Services | Invoices */}
             <div className="pl-[15px] pr-[15px] space-y-2">
               <label className={labelClass(false)}>Services</label>
               <Select
@@ -548,7 +528,6 @@ export default function EditProject() {
               />
             </div>
 
-            {/* Invoices */}
             <div className="pl-[15px] pr-[15px] space-y-2">
               <label className={labelClass(false)}>Invoices</label>
               <Select
@@ -565,7 +544,7 @@ export default function EditProject() {
               />
             </div>
 
-            {/* Quotations */}
+            {/* Row 6: Quotations | Submit */}
             <div className="pl-[15px] pr-[15px] space-y-2">
               <label className={labelClass(false)}>Quotations</label>
               <Select
@@ -582,13 +561,12 @@ export default function EditProject() {
               />
             </div>
 
-            {/* Submit */}
-            <div className="flex justify-center pl=[15px] pr-[15px] pt-[10px] pb-[10px] col-span-2">
+            <div className="flex justify-center pt-[10px] pb-[10px] col-span-2">
               <button
                 type="submit"
-                className="bg-[#3b5997] text-[#ffffff] font-semibold  rounded-[10px] w-[30%] h-[40px] border-0"
+                className="bg-[#3b5997] text-[#ffffff] font-semibold rounded-[10px] w-[30%] h-[40px] border-0"
               >
-                Save changes 
+                Save changes
               </button>
             </div>
           </div>
@@ -598,7 +576,7 @@ export default function EditProject() {
   );
 }
 
-// ✅ Clean light styles for react-select (to match your inputs)
+// Clean light styles for react-select
 const selectStylesLight = {
   control: (base, state) => ({
     ...base,
