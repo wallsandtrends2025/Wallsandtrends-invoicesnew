@@ -1,4 +1,4 @@
-// src/pages/InvoicePreview.jsx
+// src/components/InvoicePreview.jsx
 import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { db } from "../firebase";
@@ -79,23 +79,23 @@ export default function InvoicePreview() {
     navigate(`/dashboard/edit-invoice/${id}`);
   };
 
+  // NEW: back handler to All Invoices
+  const handleBack = () => {
+    navigate("/dashboard/all-invoices");
+  };
+
   const testModuleImport = async () => {
     try {
       console.log('🧪 Testing module import...');
-
-      // Test the module loading
       const { testModuleLoading } = await import('../utils/generateInvoicePDF');
       const result = testModuleLoading();
-
       console.log('✅ Module test result:', result);
       alert('Module loaded successfully! Check console for details.');
-
     } catch (error) {
       console.error('❌ Module import test failed:', error);
       alert('Module import failed! Check console for error details.');
     }
   };
-
 
   const handleDownloadTax = async () => {
     if (!invoice || !client) {
@@ -105,15 +105,9 @@ export default function InvoicePreview() {
 
     try {
       console.log('🔄 Attempting to import generateInvoicePDF module...');
-
-      // Import the PDF generation utility
       const { generateInvoicePDF } = await import('../utils/generateInvoicePDF');
-
       console.log('✅ Module imported successfully:', typeof generateInvoicePDF);
-
-      // Generate PDF using the dedicated utility
       const pdfDoc = await generateInvoicePDF(invoice, client);
-
       const timestamp = new Date().getTime();
       pdfDoc.save(`${invoice.invoice_id}_TAX_${timestamp}.pdf`);
     } catch (error) {
@@ -125,7 +119,6 @@ export default function InvoicePreview() {
         client_name: client?.client_name
       });
 
-      // Provide user-friendly error message with guidance
       let userMessage = 'Error generating Tax Invoice PDF. ';
       if (error.message.includes('font')) {
         userMessage += 'Font loading issue - check if Calibri font is available. ';
@@ -137,7 +130,6 @@ export default function InvoicePreview() {
         userMessage += 'Unknown error occurred. ';
       }
       userMessage += 'See browser console (F12) for detailed technical information.';
-
       alert(userMessage);
     }
   };
@@ -150,15 +142,9 @@ export default function InvoicePreview() {
 
     try {
       console.log('🔄 Attempting to import generateProformaInvoicePDF module...');
-
-      // Import the PDF generation utility
       const { generateProformaInvoicePDF } = await import('../utils/generateProformaInvoicePDF');
-
       console.log('✅ Proforma module imported successfully:', typeof generateProformaInvoicePDF);
-
-      // Generate PDF using the dedicated utility
       const pdfDoc = await generateProformaInvoicePDF(invoice, client);
-
       const timestamp = new Date().getTime();
       pdfDoc.save(`${invoice.invoice_id}_PROFORMA_${timestamp}.pdf`);
     } catch (error) {
@@ -170,7 +156,6 @@ export default function InvoicePreview() {
         client_name: client?.client_name
       });
 
-      // Provide user-friendly error message with guidance
       let userMessage = 'Error generating Proforma Invoice PDF. ';
       if (error.message.includes('font')) {
         userMessage += 'Font loading issue - check if Calibri font is available. ';
@@ -182,7 +167,6 @@ export default function InvoicePreview() {
         userMessage += 'Unknown error occurred. ';
       }
       userMessage += 'See browser console (F12) for detailed technical information.';
-
       alert(userMessage);
     }
   };
@@ -190,18 +174,11 @@ export default function InvoicePreview() {
   const handleDebugPDF = async () => {
     try {
       console.log('🔧 Starting debug PDF generation...');
-
-      // Import the debug function
       const { debugPDFGeneration } = await import('../utils/generateInvoicePDF');
-
       console.log('✅ Debug function imported successfully');
-
-      // Generate debug PDF
       const result = await debugPDFGeneration();
-
       console.log('Debug result:', result);
       alert('Debug PDF generation completed! Check console for details and downloads folder for the PDF file.');
-
     } catch (error) {
       console.error('❌ Debug PDF generation failed:', error);
       alert(`Debug PDF generation failed: ${error.message}`);
@@ -217,13 +194,10 @@ export default function InvoicePreview() {
     return `${dd} ${month} ${yyyy}`;
   };
 
-
-  // ---------- NEW: robust Indian-numbering converter (Rupees & Paise) ----------
+  // ---------- Indian-numbering converter (Rupees & Paise) ----------
   function numberToWordsINR(amountInput) {
     const amount = Number(amountInput ?? 0);
     if (!isFinite(amount)) return "";
-
-    // use paise to avoid floating point issues
     const totalPaise = Math.round(amount * 100);
     const rupees = Math.floor(totalPaise / 100);
     const paise = totalPaise % 100;
@@ -255,11 +229,10 @@ export default function InvoicePreview() {
     const segmentWords = (n) => {
       if (n === 0) return "Zero";
       let out = "";
-
-      const crore = Math.floor(n / 10000000);                 // 1,00,00,000
-      const lakh = Math.floor((n % 10000000) / 100000);       // 1,00,000
-      const thousand = Math.floor((n % 100000) / 1000);       // 1,000
-      const hundred = n % 1000;                               // 0..999
+      const crore = Math.floor(n / 10000000);
+      const lakh = Math.floor((n % 10000000) / 100000);
+      const thousand = Math.floor((n % 100000) / 1000);
+      const hundred = n % 1000;
 
       if (crore)   out += `${threeDigitWords(crore)} Crore`;
       if (lakh)    out += `${out ? " " : ""}${threeDigitWords(lakh)} Lakh`;
@@ -273,7 +246,7 @@ export default function InvoicePreview() {
     const paiseWords = paise ? ` and ${twoDigitWords(paise)} Paise` : "";
     return `${rupeesWords}${paiseWords} only`;
   }
-  // ---------------------------------------------------------------------------
+  // -----------------------------------------------------------------
 
   if (!invoice || !client) {
     return (
@@ -283,14 +256,14 @@ export default function InvoicePreview() {
     );
   }
 
-  // Company visuals (robust brand detection)
+  // Company visuals
   const type = String(invoice.invoice_type || '').trim().toUpperCase();
   const isWTX = type === "WTX" || type === "WTXPL" || type.includes("WTX");
-  const isWT = !isWTX; // default to WT when unknown
+  const isWT = !isWTX;
   const headingColor = isWTX ? "#ffde58" : "#3b5998";
   const logoPath = isWTX ? "/wtx_logo.png" : "/wt-logo.png";
 
-  // ======== AMOUNTS & FORMATTING (always 2 decimals) ========
+  // Amounts & formatting
   const fmt2 = (n) =>
     Number(n || 0).toLocaleString("en-IN", {
       minimumFractionDigits: 2,
@@ -300,7 +273,7 @@ export default function InvoicePreview() {
   const subtotal = Number(invoice.subtotal) || 0;
   const total = Number(invoice.total_amount) || subtotal;
 
-  // ======== TAX VISIBILITY (match CreateInvoice rules) ========
+  // Tax visibility
   const toLower = (s) => (s || "").toString().trim().toLowerCase();
   const clientCountry = toLower(client.country);
   const clientState = toLower(client.state);
@@ -316,7 +289,6 @@ export default function InvoicePreview() {
     cgstRate = 0; sgstRate = 0; igstRate = 0;
   }
 
-  // Prefer stored amounts; fall back to computed
   const storedCGST = Number(invoice.cgst ?? 0);
   const storedSGST = Number(invoice.sgst ?? 0);
   const storedIGST = Number(invoice.igst ?? 0);
@@ -326,7 +298,7 @@ export default function InvoicePreview() {
   const igstAmount = storedIGST || +(subtotal * (igstRate / 100)).toFixed(2);
   const summaryRowCount = 1 + (isIndian && isTelangana ? 2 : 1) + 1;
 
-  // ======== SERVICES NORMALIZATION ========
+  // Services normalization
   const lineItems = Array.isArray(invoice.services) && invoice.services.length
     ? invoice.services.map((s, i) => {
         const nameStr = Array.isArray(s?.name) ? s.name.filter(Boolean).join(", ") : (s?.name || `Service ${i + 1}`);
@@ -348,6 +320,15 @@ export default function InvoicePreview() {
     <div className="bg-gray-100 font-sans text-[13px] text-gray-900 preview" style={{ margin: '0 auto', padding: '0' }}>
       {/* actions */}
       <div className="bg-white border-b border-gray-200 px-4 py-3 flex gap-2 justify-center" style={{ margin: '0', padding: '12px 24px' }}>
+        {/* NEW Back button */}
+        <button
+          onClick={handleBack}
+          className="bg-[#3b5999] text-[#ffffff] px-4 py-2 rounded  text-sm"
+          title="Back to All Invoices"
+        >
+          ← Back to All Invoices
+        </button>
+
         <button
           onClick={handleEdit}
           className="bg-[#3b5999] text-[#ffffff] px-4 py-2 rounded hover:bg-[#2d4373] text-sm"
@@ -360,8 +341,6 @@ export default function InvoicePreview() {
         >
           Download Tax Invoice PDF
         </button>
-       
-        
       </div>
 
       <div className="flex justify-center items-start bg-gray-100" style={{
@@ -400,19 +379,28 @@ export default function InvoicePreview() {
            </div>
         </div>
 
-        {/* Heading - Enhanced styling with consistent format */}
+        {/* Heading */}
         <h1 className="text-xl mb-4" style={{ color: headingColor, fontSize: '20px', marginBottom: '10px', marginTop: '0px', fontFamily: 'Calibri, sans-serif', fontWeight: 'normal' }}>
            Tax Invoice
         </h1>
-        
-        {/* Top info table */}
-        <table className="w-full border-collapse mb-3" style={{
-          marginBottom: '8px',
-          border: '1px solid #cccccc',
-          backgroundColor: '#ffffff',
-          fontFamily: 'Calibri, sans-serif',
-          fontSize: '9px'
-        }}>
+
+        {/* 1) Top info table — equal columns */}
+        <table
+          className="w-full border-collapse mb-3"
+          style={{
+            marginBottom: '8px',
+            border: '1px solid #cccccc',
+            backgroundColor: '#ffffff',
+            fontFamily: 'Calibri, sans-serif',
+            fontSize: '9px',
+            tableLayout: 'fixed',
+            width: '100%'
+          }}
+        >
+          <colgroup>
+            <col style={{ width: '50%' }} />
+            <col style={{ width: '50%' }} />
+          </colgroup>
           <tbody>
             <tr style={{ border: '1px solid #cccccc' }}>
               <td className="p-1 text-[8px] text-left" style={{
@@ -433,7 +421,8 @@ export default function InvoicePreview() {
                 backgroundColor: '#ffffff',
                 verticalAlign: 'top'
               }}>
-                <span style={{fontWeight: '600'}}>GST IN:</span> <span style={{fontWeight: 'normal'}}>{isWT ? "36AACFW6827B1Z8" : "36AAACW8991C1Z9"}</span>
+                <span style={{fontWeight: '600'}}>GST IN:</span>{" "}
+                <span style={{fontWeight: 'normal'}}>{isWT ? "36AACFW6827B1Z8" : "36AAACW8991C1Z9"}</span>
               </td>
             </tr>
             <tr style={{ border: '1px solid #cccccc' }}>
@@ -447,7 +436,8 @@ export default function InvoicePreview() {
                 fontFamily: 'Calibri, sans-serif'
               }}>
                 <div style={{textAlign: 'left', width: '100%'}}>
-                  <span style={{fontWeight: '600'}}>Invoice Number:</span> <span style={{fontWeight: 'normal'}}>{invoice.invoice_id}</span>
+                  <span style={{fontWeight: '600'}}>Invoice Number:</span>{" "}
+                  <span style={{fontWeight: 'normal'}}>{invoice.invoice_id}</span>
                 </div>
               </td>
               <td className="p-1 text-[6px] text-left" style={{
@@ -480,7 +470,8 @@ export default function InvoicePreview() {
                 verticalAlign: 'top'
               }}>
                 <div style={{textAlign: 'left', width: '100%'}}>
-                  <span style={{fontWeight: '600'}}>Invoice Title:</span> <span style={{fontWeight: 'normal'}}>{invoice.invoice_title || lineItems[0]?.name}</span>
+                  <span style={{fontWeight: '600'}}>Invoice Title:</span>{" "}
+                  <span style={{fontWeight: 'normal'}}>{invoice.invoice_title || lineItems[0]?.name}</span>
                 </div>
               </td>
               <td className="p-1 font-semibold text-[6px] text-left" style={{
@@ -493,23 +484,31 @@ export default function InvoicePreview() {
                 verticalAlign: 'top'
               }}>
                 <div style={{textAlign: 'left', width: '100%'}}>
-                  <span style={{fontWeight: '600'}}>Total Cost:</span> <span style={{fontWeight: 'normal'}}>INR {fmt2(total)}</span>
+                  <span style={{fontWeight: '600'}}>Total Cost:</span>{" "}
+                  <span style={{fontWeight: 'normal'}}>INR {fmt2(total)}</span>
                 </div>
               </td>
             </tr>
           </tbody>
         </table>
 
-
-
-        {/* Customer block */}
-        <table className="w-full border-collapse mb-3" style={{
-          marginBottom: '8px',
-          border: '1px solid #cccccc',
-          backgroundColor: '#ffffff',
-          fontFamily: 'Calibri, sans-serif',
-          fontSize: '9px'
-        }}>
+        {/* 2) Customer block — equal columns */}
+        <table
+          className="w-full border-collapse mb-3"
+          style={{
+            marginBottom: '8px',
+            border: '1px solid #cccccc',
+            backgroundColor: '#ffffff',
+            fontFamily: 'Calibri, sans-serif',
+            fontSize: '9px',
+            tableLayout: 'fixed',
+            width: '100%'
+          }}
+        >
+          <colgroup>
+            <col style={{ width: '50%' }} />
+            <col style={{ width: '50%' }} />
+          </colgroup>
           <tbody>
             <tr style={{ border: '1px solid #cccccc' }}>
               <td className="p-1 text-[6px] text-left" style={{
@@ -522,7 +521,8 @@ export default function InvoicePreview() {
                 lineHeight: '1.2'
               }}>
                 <div style={{textAlign: 'left', width: '100%', margin: '0', padding: '0'}}>
-                  <span style={{fontWeight: '600'}}>Customer Name:</span> <span style={{fontWeight: 'normal'}}>{client.client_name}</span>
+                  <span style={{fontWeight: '600'}}>Customer Name:</span>{" "}
+                  <span style={{fontWeight: 'normal'}}>{client.client_name}</span>
                 </div>
               </td>
               <td className="p-1 text-[6px] text-left" rowSpan={2} style={{
@@ -555,7 +555,8 @@ export default function InvoicePreview() {
                   margin: '0',
                   padding: '0'
                 }}>
-                  <span style={{fontWeight:'bold'}}>Customer GST IN:</span> {(client.gst_number || "").trim() || "NA"}
+                  <span style={{fontWeight:'bold'}}>Customer GST IN:</span>{" "}
+                  {(client.gst_number || "").trim() || "NA"}
                 </div>
               </td>
             </tr>
@@ -596,7 +597,7 @@ export default function InvoicePreview() {
               <th className="p-1 text-[6px] text-center font-bold" style={{
                 padding: '3px 6px',
                 fontSize: '8px',
-                border: '1px solid #cccccc',
+                border: '1px solid #cccccc', // ← fixed
                 fontWeight: 'bold',
                 textAlign: 'center',
                 backgroundColor: '#ffffff',
@@ -639,7 +640,7 @@ export default function InvoicePreview() {
               </tr>
             ))}
 
-            {/* Summary with rowSpan on first two columns to match reference layout */}
+            {/* Summary with rowSpan on first two columns */}
             <tr style={{ border: '1px solid #cccccc' }}>
               <td rowSpan={summaryRowCount} style={{
                 padding: '0',
@@ -747,7 +748,7 @@ export default function InvoicePreview() {
                }}>{fmt2(total)}</td>
              </tr>
 
-            {/* Amount in words row: label in column 3 and words in column 4 */}
+            {/* Amount in words row */}
             <tr style={{ border: '1px solid #cccccc' }}>
               <td className="p-1 text-[6px] text-center" colSpan={2} style={{
                 padding: '3px 6px',
@@ -774,11 +775,26 @@ export default function InvoicePreview() {
           </tbody>
         </table>
 
-        {/* Bank Details - Enhanced styling with consistent format */}
+        {/* 4) Bank Details — equal columns */}
         <h2 className="font-semibold mb-3 text-[14px]" style={{ color: headingColor, fontSize: '14px', marginBottom: '12px', marginTop: '16px', fontFamily: 'Calibri, sans-serif' }}>
            Bank Details
         </h2>
-        <table className="w-full border-collapse mb-3 text-center" style={{ marginBottom: '12px', fontSize: '10px', border: '1px solid #cccccc', backgroundColor: '#ffffff', fontFamily: 'Calibri, sans-serif' }}>
+        <table
+          className="w-full border-collapse mb-3 text-center"
+          style={{
+            marginBottom: '12px',
+            fontSize: '10px',
+            border: '1px solid #cccccc',
+            backgroundColor: '#ffffff',
+            fontFamily: 'Calibri, sans-serif',
+            tableLayout: 'fixed',
+            width: '100%'
+          }}
+        >
+          <colgroup>
+            <col style={{ width: '50%' }} />
+            <col style={{ width: '50%' }} />
+          </colgroup>
           <tbody>
             <tr style={{ border: '1px solid #cccccc' }}>
               <td className="p-1 text-[6px] w-1/3 text-center" style={{

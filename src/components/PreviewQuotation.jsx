@@ -29,14 +29,8 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
       console.log("🔍 DEBUG: Firebase db object:", !!db);
 
       try {
-        // Check if ID exists and is valid
-        if (!id) {
-          console.error("❌ DEBUG: No ID provided in URL params");
-          return;
-        }
-
-        if (!id.trim()) {
-          console.error("❌ DEBUG: ID is empty or whitespace");
+        if (!id || !id.trim()) {
+          console.error("❌ DEBUG: Invalid ID in URL params");
           return;
         }
 
@@ -81,8 +75,6 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
           }
         } else {
           console.error("❌ DEBUG: Quotation document not found for ID:", id);
-          console.log("🔍 DEBUG: Available collections check - trying to list quotations collection");
-          // Let's check if the quotations collection exists and has documents
           try {
             const { collection, getDocs, query, limit } = await import("firebase/firestore");
             const testQuery = query(collection(db, "quotations"), limit(5));
@@ -110,7 +102,6 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
   }, [id]);
 
   console.log("🔍 DEBUG: Validation - Before useEffect that references displayClient in deps");
-  // Debug logging for state changes and loading issues
   useEffect(() => {
     console.log("🔄 DEBUG: Component state changed:", {
       hasQuote: !!quote,
@@ -156,7 +147,6 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
         });
       }
 
-      // Debug table alignment
       const table = document.querySelector(".a4-preview table");
       if (table) {
         console.log("Table dimensions:", table.getBoundingClientRect());
@@ -196,7 +186,6 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
     navigate(`/dashboard/edit-quotation/${id}`); // adjust route if different
   };
 
-  // Test function for logo detection
   const testLogoDetection = () => {
     console.log('🧪 Testing logo detection logic...');
 
@@ -219,7 +208,6 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
     });
   };
 
-  // Call test function for debugging
   if (quote) {
     testLogoDetection();
   }
@@ -232,13 +220,9 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
 
     try {
       console.log('🔄 Attempting to import generateProformaInvoicePDF module...');
-
-      // Import the PDF generation utility (same as invoice preview uses)
       const { generateProformaInvoicePDF } = await import('../utils/generateProformaInvoicePDF');
-
       console.log('✅ Proforma module imported successfully:', typeof generateProformaInvoicePDF);
 
-      // Generate PDF using the dedicated utility (same as invoice preview)
       const pdfDoc = await generateProformaInvoicePDF(quote, displayClient);
 
       const timestamp = new Date().getTime();
@@ -255,7 +239,6 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
         client_name: displayClient?.client_name
       });
 
-      // Provide user-friendly error message with guidance
       let userMessage = 'Error generating Proforma PDF. ';
       if (error.message.includes('font')) {
         userMessage += 'Font loading issue - check if Calibri font is available. ';
@@ -284,7 +267,6 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
     return `${dd} ${month} ${yyyy}`;
   };
 
-  // ---------- Indian-numbering converter (Rupees & Paise) ----------
   function numberToWordsINR(amountInput) {
     const amount = Number(amountInput ?? 0);
     if (!isFinite(amount)) return "";
@@ -294,39 +276,11 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
     const paise = totalPaise % 100;
 
     const ones = [
-      "",
-      "One",
-      "Two",
-      "Three",
-      "Four",
-      "Five",
-      "Six",
-      "Seven",
-      "Eight",
-      "Nine",
-      "Ten",
-      "Eleven",
-      "Twelve",
-      "Thirteen",
-      "Fourteen",
-      "Fifteen",
-      "Sixteen",
-      "Seventeen",
-      "Eighteen",
-      "Nineteen",
+      "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+      "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen",
+      "Sixteen", "Seventeen", "Eighteen", "Nineteen",
     ];
-    const tens = [
-      "",
-      "",
-      "Twenty",
-      "Thirty",
-      "Forty",
-      "Fifty",
-      "Sixty",
-      "Seventy",
-      "Eighty",
-      "Ninety",
-    ];
+    const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
 
     const twoDigitWords = (n) => {
       if (n === 0) return "";
@@ -348,7 +302,6 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
     const segmentWords = (n) => {
       if (n === 0) return "Zero";
       let out = "";
-
       const crore = Math.floor(n / 10000000);
       const lakh = Math.floor((n % 10000000) / 100000);
       const thousand = Math.floor((n % 100000) / 1000);
@@ -366,11 +319,9 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
     const paiseWords = paise ? ` and ${twoDigitWords(paise)} Paise` : "";
     return `${rupeesWords}${paiseWords} only`;
   }
-  // ----------------------------------------------------------------
 
   if (!quote) {
     console.log("⏳ DEBUG: Rendering loading state - quote not loaded yet");
-
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f3f4f6] text-[#3b5999] text-xl">
         Loading proforma...
@@ -380,124 +331,12 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
 
   console.log("✅ INFO: Rendering proforma preview");
 
-  // DEBUG: Log updated border colors
-  console.log("🔍 DEBUG: Updated border colors in preview - now #808080 (darker gray)");
-  console.log("🔍 DEBUG: Border color #808080 RGB:", { r: 128, g: 128, b: 128 });
-
-  // Company visuals (follow InvoicePreview style)
   const type = (quote.proforma_type || quote.quotation_type || quote.invoice_type || "").toString().toUpperCase().trim();
-  console.log("🔍 DEBUG: Proforma type detection:", {
-    proforma_type: quote.proforma_type,
-    quotation_type: quote.quotation_type,
-    invoice_type: quote.invoice_type,
-    final_type: type,
-    type_length: type.length
-  });
-
-  // Enhanced type detection for WTX
   const isWT = type === "WT" || type === "WTPL" || type.includes("WT");
   const isWTX = type === "WTX" || type === "WTXPL" || type.includes("WTX");
   const headingColor = isWTX ? "#ffde58" : "#3b5998";
   const logoPath = isWTX ? "/wtx_logo.png" : "/wt-logo.png";
 
-  console.log("🔍 DEBUG: Enhanced type analysis:", {
-    type,
-    isWT,
-    isWTX,
-    logoPath,
-    headingColor,
-    type_charCodes: type.split('').map(c => c.charCodeAt(0))
-  });
-
-  // Test different type values to ensure logic works
-  console.log("🔍 DEBUG: Testing type detection logic:");
-  const testTypes = ['WT', 'WTX', 'WTPL', 'WTXPL', 'wt', 'wtx'];
-  testTypes.forEach(testType => {
-    const testIsWT = testType === 'WT' || testType === 'WTPL' || testType.includes('WT');
-    const testIsWTX = testType === 'WTX' || testType === 'WTXPL' || testType.includes('WTX');
-    const testLogoPath = testIsWTX ? '/wtx_logo.png' : '/wt-logo.png';
-    console.log(`  ${testType}: isWT=${testIsWT}, isWTX=${testIsWTX}, logo=${testLogoPath}`);
-  });
-
-  console.log("🔍 DEBUG: Logo selection:", {
-    isWT,
-    isWTX,
-    logoPath,
-    headingColor,
-    fullLogoPath: `${window.location.origin}${logoPath}`
-  });
-
-  // Additional check for logo file existence and try alternative extensions
-  const checkLogoFile = async (path) => {
-    try {
-      const response = await fetch(path);
-      console.log(`🔍 DEBUG: Logo file check - ${path}:`, {
-        status: response.status,
-        ok: response.ok,
-        type: response.type,
-        url: response.url
-      });
-      return response.ok;
-    } catch (error) {
-      console.error(`❌ DEBUG: Logo file check failed - ${path}:`, error);
-      return false;
-    }
-  };
-
-  // Check primary logo path
-  checkLogoFile(logoPath);
-
-  // Also check alternative extensions
-  const altExtensions = ['.png', '.jpg', '.jpeg', '.svg'];
-  altExtensions.forEach(ext => {
-    if (!logoPath.endsWith(ext)) {
-      const altPath = logoPath.replace(/\.[^/.]+$/, ext);
-      checkLogoFile(altPath);
-    }
-  });
-
-  // Test direct logo file access
-  console.log('🔍 DEBUG: Testing direct logo file access...');
-  fetch('/wt-logo.png')
-    .then(response => {
-      console.log('✅ DEBUG: /wt-logo.png accessible:', response.ok, 'status:', response.status);
-      if (response.ok) {
-        console.log('✅ DEBUG: WT logo file exists and is accessible');
-      } else {
-        console.error('❌ DEBUG: WT logo file not accessible, status:', response.status);
-      }
-    })
-    .catch(error => console.error('❌ DEBUG: /wt-logo.png error:', error));
-
-  fetch('/wtx_logo.png')
-    .then(response => {
-      console.log('✅ DEBUG: /wtx_logo.png accessible:', response.ok, 'status:', response.status);
-      if (response.ok) {
-        console.log('✅ DEBUG: WTX logo file exists and is accessible');
-      } else {
-        console.error('❌ DEBUG: WTX logo file not accessible, status:', response.status);
-      }
-    })
-    .catch(error => console.error('❌ DEBUG: /wtx_logo.png error:', error));
-
-  // Test with full URL
-  const fullWtPath = `${window.location.origin}/wt-logo.png`;
-  const fullWtxPath = `${window.location.origin}/wtx_logo.png`;
-
-  console.log('🔍 DEBUG: Testing full URL logo access...');
-  fetch(fullWtPath)
-    .then(response => {
-      console.log('✅ DEBUG: Full WT logo accessible:', response.ok, 'status:', response.status);
-    })
-    .catch(error => console.error('❌ DEBUG: Full WT logo error:', error));
-
-  fetch(fullWtxPath)
-    .then(response => {
-      console.log('✅ DEBUG: Full WTX logo accessible:', response.ok, 'status:', response.status);
-    })
-    .catch(error => console.error('❌ DEBUG: Full WTX logo error:', error));
-
-  // ======== AMOUNTS & FORMATTING ========
   const fmt2 = (n) =>
     Number(n).toLocaleString("en-IN", {
       minimumFractionDigits: 2,
@@ -535,7 +374,6 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
     normalizedItems.reduce((sum, it) => sum + Number(it.amount || 0), 0);
   const total = Number(quote.total_amount) || subtotal;
 
-  // ======== TAX VISIBILITY (same rules as InvoicePreview) ========
   const toLower = (s) => (s || "").toString().trim().toLowerCase();
   const clientCountry = toLower(displayClient.country);
   const clientState = toLower(displayClient.state);
@@ -568,7 +406,6 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
   const igstAmount = storedIGST || +(subtotal * (igstRate / 100)).toFixed(2);
   const summaryRowCount = 1 + (isIndian && isTelangana ? 2 : 1) + 1;
 
-  // IDs/Dates/Titles (mirroring top info style)
   const proformaId = quote.proforma_id || quote.quotation_id || id;
   const proformaDate =
     quote.proforma_date || quote.quotation_date || quote.created_at?.toDate?.();
@@ -630,31 +467,18 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
               style={{ height: '44px', width: 'auto' }}
               onError={(e) => {
                 console.error('❌ Preview DEBUG: Logo failed to load:', logoPath);
-                console.error('❌ Preview DEBUG: Image element:', e.target);
-                console.error('❌ Preview DEBUG: Trying fallback logo...');
-
-                // Try alternative logo paths
                 const fallbackPaths = ['/wtx_logo.png', '/wt-logo.png', '/invoice-logo.png'];
-                let fallbackIndex = 0;
-
+                let i = 0;
                 const tryFallback = () => {
-                  if (fallbackIndex < fallbackPaths.length) {
-                    const fallbackPath = fallbackPaths[fallbackIndex];
-                    console.log(`🔄 Preview DEBUG: Trying fallback logo: ${fallbackPath}`);
-                    e.target.src = fallbackPath;
-                    fallbackIndex++;
-                  } else {
-                    console.error('❌ Preview DEBUG: All logo paths failed');
+                  if (i < fallbackPaths.length) {
+                    e.target.src = fallbackPaths[i++];
                   }
                 };
-
                 e.target.onerror = tryFallback;
                 tryFallback();
               }}
               onLoad={(e) => {
-                console.log('✅ Preview DEBUG: Logo loaded successfully:', logoPath);
-                console.log('✅ Preview DEBUG: Natural size:', e.target.naturalWidth + 'x' + e.target.naturalHeight);
-                console.log('✅ Preview DEBUG: Image src:', e.target.src);
+                console.log('✅ Preview DEBUG: Logo loaded:', e.target.naturalWidth + 'x' + e.target.naturalHeight);
               }}
             />
             <div className="text-left text-[9px] leading-tight" style={{ fontSize: '9px', lineHeight: '1.2', marginTop: '10px', textAlign: 'left' }}>
@@ -662,12 +486,12 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
             </div>
           </div>
 
-          {/* Heading - Enhanced styling with consistent format */}
+          {/* Heading */}
           <h1 className="text-xl mb-4" style={{ color: headingColor, fontSize: '20px', marginBottom: '10px', marginTop: '0px', fontFamily: 'Calibri, sans-serif', fontWeight: 'normal' }}>
             Proforma Invoice
           </h1>
 
-          {/* Top info table */}
+          {/* ================== 1) Top info table — FORCE 50/50 COLUMNS ================== */}
           <table className="w-full border-collapse mb-3" style={{
             marginBottom: '8px',
             border: '1px solid #cccccc',
@@ -675,6 +499,10 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
             fontFamily: 'Calibri, sans-serif',
             fontSize: '9px'
           }}>
+            <colgroup>
+              <col style={{ width: '50%' }} />
+              <col style={{ width: '50%' }} />
+            </colgroup>
             <tbody>
               <tr style={{ border: '1px solid #cccccc' }}>
                 <td className="p-1 text-[8px] text-left" style={{
@@ -758,7 +586,7 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
             </tbody>
           </table>
 
-          {/* Customer block */}
+          {/* ================== 2) Customer block — FORCE 50/50 COLUMNS ================== */}
           <table className="w-full border-collapse mb-3" style={{
             marginBottom: '8px',
             border: '1px solid #cccccc',
@@ -766,6 +594,10 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
             fontFamily: 'Calibri, sans-serif',
             fontSize: '9px'
           }}>
+            <colgroup>
+              <col style={{ width: '50%' }} />
+              <col style={{ width: '50%' }} />
+            </colgroup>
             <tbody>
               <tr style={{ border: '1px solid #cccccc' }}>
                 <td className="p-1 text-[6px] text-left" style={{
@@ -818,7 +650,7 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
             </tbody>
           </table>
 
-          {/* Items table */}
+          {/* Items table (unchanged) */}
           <table className="w-full border-collapse mb-3 text-center" style={{ marginBottom: '12px', fontSize: '10px', border: '1px solid #cccccc', backgroundColor: '#ffffff', fontFamily: 'Calibri, sans-serif' }}>
             <thead className="text-black" style={{ backgroundColor: '#ffffff', border: '1px solid #cccccc' }}>
               <tr style={{ border: '1px solid #cccccc', backgroundColor: '#ffffff' }}>
@@ -1003,7 +835,7 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
                 }}>{fmt2(total)}</td>
               </tr>
 
-              {/* Amount in words row: label in column 3 and words in column 4 */}
+              {/* Amount in words row */}
               <tr style={{ border: '1px solid #cccccc' }}>
                 <td className="p-1 text-[6px] text-center" colSpan={2} style={{
                   padding: '3px 6px',
@@ -1029,7 +861,6 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
               </tr>
             </tbody>
           </table>
-
 
           <p style={{ fontSize: '8px', marginBottom: '8px' }}>NOTE: No files will be delivered until the final payment is Done.</p>
 
@@ -1062,4 +893,3 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
     </div>
   );
 }
-

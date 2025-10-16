@@ -27,6 +27,10 @@ import PreviewProject from "./components/PreviewProject";
 import PDFManager from "./components/PDFManager";
 import PDFViewer from "./components/PDFViewer";
 import AuditManager from "./components/AuditManager";
+import POCSignup from "./components/POCSignup";
+import AllPOCs from "./components/AllPOCs";
+import EditPOC from "./components/EditPOC";
+import PreviewPOC from "./components/PreviewPOC"
 // import InvoicePreviewTest from "./components/InvoicePreviewTest"; // Component not found
 
 
@@ -90,7 +94,10 @@ export default function App() {
         <Route path="pdf-manager" element={<PDFManager />} />
         <Route path="pdf-viewer/:pdfId" element={<PDFViewer />} />
         <Route path="audit-manager" element={<AuditManager />} />
-
+<Route path="add-poc" element={<POCSignup />} />
+<Route path="all-pocs" element={<AllPOCs />} />
+<Route path="edit-poc/:id" element={<EditPOC />} />
+<Route path="preview-poc/:id" element={<PreviewPOC />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/login" />} />

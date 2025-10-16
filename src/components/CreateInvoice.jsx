@@ -405,432 +405,430 @@ export default function CreateInvoice() {
 
   return (
     <div style={{ display: "flex", justifyContent: "center", padding: "2rem" }}>
-      {/* Turn OFF native HTML5 validation */}
-        {/* Title chip */}
-     
-     
       <form onSubmit={handleSubmit} noValidate
         style={{  borderRadius: "10px", padding: "20px", width: "100%",  }}>
-           <div className="bg-[#ffffff] shadow-sm mb-4 p-[15px] border-curve mb-[20px]">
+        <div className="bg-[#ffffff] shadow-sm mb-4 p-[15px] border-curve mb-[20px]">
           <h2 className="font-semibold text-[#000000] m-[0]">Create Invoice</h2>
         </div>
- <div className="p-[15px] bg-[#ffffff] border-curve">
-        {/* Company (required) */}
-        <RequiredLabel>Select Company</RequiredLabel>
-        <select
-          value={yourCompany}
-          onChange={(e) => setYourCompany(e.target.value)}
-          aria-invalid={!!errors.yourCompany}
-          style={{
-            width: "100%",
-            padding: "10px",
-            marginBottom: "6px",
-            borderRadius: 10,
-            border: `1px solid ${errors.yourCompany ? "#d32f2f" : "#ccc"}`,
-          }}
-        >
-          <option value="">Select Company</option>
-          <option value="WT">WT</option>
-          <option value="WTPL">WTPL</option>
-          <option value="WTX">WTX</option>
-          <option value="WTXPL">WTXPL</option>
-        </select>
-        {errors.yourCompany && <small style={{ color: "#d32f2f" }}>{errors.yourCompany}</small>}
+        <div className="p-[15px] bg-[#ffffff] border-curve">
 
-        <div style={{ display: "flex", gap: "20px", marginTop: 14, marginBottom: 8 }}>
-          <div style={{ flex: 1 }} className="mr-[10px]">
-            <RequiredLabel>Invoice Date</RequiredLabel>
-            <input
-              type="date"
-              value={invoiceDate}
-              onChange={(e) => setInvoiceDate(e.target.value)}
-              aria-invalid={!!errors.invoiceDate}
-              style={{
-                width: "100%",
-                padding: "10px",
-                borderRadius: 10,
-                border: `1px solid ${errors.invoiceDate ? "#d32f2f" : "#ccc"}`,
-              }}
-            />
-            {errors.invoiceDate && <small style={{ color: "#d32f2f" }}>{errors.invoiceDate}</small>}
-          </div>
-
-          <div style={{ flex: 1 }}>
-            <RequiredLabel>Title of Invoice</RequiredLabel>
-            <input
-              type="text"
-              value={invoiceTitle}
-              onChange={(e) => setInvoiceTitle(e.target.value)}
-              aria-invalid={!!errors.invoiceTitle}
-              style={{
-                width: "100%",
-                padding: "10px",
-                borderRadius: 10,
-                border: `1px solid ${errors.invoiceTitle ? "#d32f2f" : "#ccc"}`,
-              }}
-            />
-            {errors.invoiceTitle && <small style={{ color: "#d32f2f" }}>{errors.invoiceTitle}</small>}
-          </div>
-        </div>
-
-        {/* Invoice Number */}
-        <label style={{ fontWeight: "600" }}>Invoice Number</label>
-        <input type="text" value={previewInvoiceNumber} disabled style={{ width: "100%", padding: "10px", marginBottom: "20px", background: "#ffffff", fontWeight: "bold", borderRadius: "10px" }} />
-
-        {/* Client (filtered by company) */}
-        <RequiredLabel>Select Client</RequiredLabel>
-        <Select
-          isDisabled={!yourCompany}
-          options={filteredClients.map((client) => ({
-            value: client.id,
-            label: `${client.client_name ?? "—"}`,
-          }))}
-          value={
-            filteredClients.find((c) => c.id === selectedClientId)
-              ? {
-                  value: selectedClientId,
-                  label: `${selectedClient?.company_name ?? "—"} — ${selectedClient?.client_name ?? "—"}`,
-                }
-              : null
-          }
-          onChange={(selected) => {
-            setSelectedClientId(selected?.value || "");
-            const client = filteredClients.find((c) => c.id === selected?.value);
-            setSelectedClient(client || null);
-            setErrors((prev) => ({ ...prev, selectedClientId: "" }));
-          }}
-          placeholder={yourCompany ? "Select Client..." : "Select company first"}
-          isSearchable
-          styles={{
-            control: (base) => ({
-              ...base,
-              padding: 2,
-              marginBottom: 6,
+          {/* Company (required) */}
+          <RequiredLabel>Select Company</RequiredLabel>
+          <select
+            value={yourCompany}
+            onChange={(e) => setYourCompany(e.target.value)}
+            aria-invalid={!!errors.yourCompany}
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginBottom: "6px",
               borderRadius: 10,
-              opacity: yourCompany ? 1 : 0.7,
-              borderColor: errors.selectedClientId ? "#d32f2f" : base.borderColor,
-              boxShadow: errors.selectedClientId ? "0 0 0 1px #d32f2f" : base.boxShadow,
-              "&:hover": { borderColor: errors.selectedClientId ? "#d32f2f" : base.borderColor },
-            }),
-          }}
-          noOptionsMessage={() => (yourCompany ? "No clients for this company" : "Select company first")}
-        />
-        {errors.selectedClientId && <small style={{ color: "#d32f2f" }}>{errors.selectedClientId}</small>}
-
-        <label style={{ fontWeight: "600", marginTop: "20px", display: "block" }}>Link Project</label>
-        <Select
-          options={projects}
-          value={selectedProject}
-          onChange={(selected) => setSelectedProject(selected)}
-          placeholder="Select Project..."
-          className="link-poject-field"
-          isSearchable
-          styles={{
-            control: (base) => ({
-              ...base,
-              
-              padding: "2px",
-              borderRadius: "10px",
-              marginBottom: "20px",
-            }),
-          }}
-        />
-
-        {/* Services */}
-        <h3 style={{ fontSize: "20px", fontWeight: "600", marginTop: "30px" }}>Services</h3>
-        {errors.services && <small style={{ color: "#d32f2f" }}>{errors.services}</small>}
-
-        {services.map((service, idx) => {
-          const rowErr = errors.serviceRows[idx] || {};
-          return (
-            <div key={idx} className="services-block" style={{ marginBottom: "25px", padding: "20px", background: "#fafafa", border: "1px solid #ddd", borderRadius: "8px" }}>
-              <div style={{ marginBottom: "15px" }}>
-                <RequiredLabel>Service Name {idx + 1}</RequiredLabel>
-                <Select
-                  isMulti
-                  options={serviceOptions}
-                  value={(service.name || []).map((n) => serviceOptions.find((opt) => opt.value === n))}
-                  onChange={(selectedOptions) => {
-                    const updated = [...services];
-                    updated[idx].name = (selectedOptions || []).map((opt) => opt.value);
-                    setServices(updated);
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      if (next.serviceRows[idx]?.name) {
-                        next.serviceRows = {
-                          ...next.serviceRows,
-                          [idx]: { ...next.serviceRows[idx], name: "" },
-                        };
-                      }
-                      return next;
-                    });
-                  }}
-                  placeholder="Select Service(s)"
-                  isSearchable
-                  styles={{
-                    control: (base) => ({
-                      ...base,
-                      minHeight: "44px",
-                      padding: "2px",
-                      borderColor: rowErr.name ? "#d32f2f" : "#ccc",
-                    }),
-                  }}
-                />
-                {rowErr.name && <small style={{ color: "#d32f2f" }}>{rowErr.name}</small>}
-              </div>
-
-              <div style={{ marginBottom: "15px" }}>
-                <RequiredLabel>Service Description</RequiredLabel>
-                <textarea
-                  value={service.description || ""}
-                  onChange={(e) => {
-                    const updated = [...services];
-                    updated[idx].description = e.target.value;
-                    setServices(updated);
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      if (next.serviceRows[idx]?.description) {
-                        next.serviceRows = { ...next.serviceRows, [idx]: { ...next.serviceRows[idx], description: "" } };
-                      }
-                      return next;
-                    });
-                  }}
-                  placeholder="Enter Service Description"
-                  style={{ width: "100%", padding: "10px", borderRadius: "5px", border: `1px solid ${rowErr.description ? "#d32f2f" : "#ccc"}` }}
-                  rows={3}
-                />
-                {rowErr.description && <small style={{ color: "#d32f2f" }}>{rowErr.description}</small>}
-              </div>
-
-              <div style={{ marginBottom: "15px" }}>
-                <RequiredLabel>Service Amount ₹</RequiredLabel>
-                <input
-                  type="number"
-                  min="1"             // ✅ Prevent negative and 0
-                  step="any"
-                  value={service.amount ?? ""}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    const updated = [...services];
-                    updated[idx].amount = val === "" ? "" : Math.max(1, Number(val)); // ✅ Force >= 1
-                    setServices(updated);
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      if (next.serviceRows[idx]?.amount) {
-                        next.serviceRows = { ...next.serviceRows, [idx]: { ...next.serviceRows[idx], amount: "" } };
-                      }
-                      return next;
-                    });
-                  }}
-                  placeholder="Enter Amount"
-                  style={{ width: "100%", padding: "10px", borderRadius: "5px", border: `1px solid ${rowErr.amount ? "#d32f2f" : "#ccc"}` }}
-                />
-                {rowErr.amount && <small style={{ color: "#d32f2f" }}>{rowErr.amount}</small>}
-              </div>
-
-              {services.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const updated = [...services];
-                    updated.splice(idx, 1);
-                    setServices(updated);
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      const { [idx]: _, ...rest } = next.serviceRows;
-                      next.serviceRows = rest;
-                      return next;
-                    });
-                  }}
-                  style={{ backgroundColor: "#dc3545", color: "#fff", padding: "6px 12px", border: "none", borderRadius: "4px", fontWeight: "bold", cursor: "pointer" }}
-                >
-                  Remove Service
-                </button>
-              )}
-            </div>
-          );
-        })}
-
-        {/* Add Service Button */}
-        <button
-          type="button"
-          onClick={() => setServices([...services, { name: [], description: "", amount: "" }])}
-          style={{ marginBottom: "20px", padding: "10px 20px", background: "rgb(59 89 151)", color: "#fff", borderRadius: "5px", fontWeight: "bold" }}
-        >
-          {services.length === 0 ? "Add Service" : "Add Another Service"}
-        </button>
-
-        {/* Payment Status */}
-        <div style={{ marginBottom: "20px" }}>
-          <label style={{ fontWeight: "600" }}>Payment Status</label>
-          <select
-            value={paymentStatus}
-            onChange={(e) => setPaymentStatus(e.target.value)}
-            style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px solid #ccc" }}
+              border: `1px solid ${errors.yourCompany ? "#d32f2f" : "#ccc"}`,
+            }}
           >
-            <option value="Pending">Pending</option>
-            <option value="Paid">Paid</option>
-            <option value="Partial">Partial</option>
+            <option value="">Select Company</option>
+            <option value="WT">WT</option>
+            <option value="WTPL">WTPL</option>
+            <option value="WTX">WTX</option>
+            <option value="WTXPL">WTXPL</option>
           </select>
-        </div>
+          {errors.yourCompany && <small style={{ color: "#d32f2f" }}>{errors.yourCompany}</small>}
 
-        {/* GST Payment Status */}
-        <div style={{ marginBottom: "20px" }}>
-          <label style={{ fontWeight: "600" }}>GST Payment Status</label>
-          <select
-            value={gstPaymentStatus}
-            onChange={(e) => setGstPaymentStatus(e.target.value)}
-            disabled={!(selectedClient && selectedClient.country === "India")}
-            style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px solid #ccc", background: !(selectedClient && selectedClient.country === "India") ? "#f3f4f6" : "#fff" }}
-            title={!(selectedClient && selectedClient.country === "India") ? "GST not applicable for this client" : ""}
-          >
-            <option value="Pending">Pending</option>
-            <option value="Paid">Paid</option>
-            <option value="Partial">Partial</option>
-          </select>
-          {!(selectedClient && selectedClient.country === "India") && (
-            <small style={{ color: "#666" }}>
-              GST not applicable (international client) — saved as "NA".
-            </small>
-          )}
-        </div>
-
-        {/* Totals — show only applicable GST lines */}
-        <div style={{ background: "#f9f9f9", padding: "20px", borderRadius: "8px", marginBottom: "20px" }}>
-          <p>Subtotal: ₹{formatAmount(subtotal)}</p>
-          {cgst > 0 && <p>CGST ({cgstRate}%): ₹{formatAmount(cgst)}</p>}
-          {sgst > 0 && <p>SGST ({sgstRate}%): ₹{formatAmount(sgst)}</p>}
-          {igst > 0 && <p>IGST ({igstRate}%): ₹{formatAmount(igst)}</p>}
-          <p><b>Total Tax:</b> ₹{formatAmount(tax_amount)}</p>
-          <p><b>Total Amount:</b> ₹{formatAmount(grand_total)}</p>
-        </div>
-
-        {/* Progress Box */}
-        {isGeneratingPDF && (
-          <div style={{ background: "#e3f2fd", padding: "20px", borderRadius: "8px", marginBottom: "20px", border: "1px solid #2196f3" }}>
-            <div style={{ display: "flex", alignItems: "center", marginBottom: "10px" }}>
-              <div style={{ width: "20px", height: "20px", border: "2px solid #2196f3", borderTop: "2px solid transparent", borderRadius: "50%", animation: "spin 1s linear infinite", marginRight: "10px" }}></div>
-              <span style={{ fontWeight: "bold", color: "#1976d2" }}>{pdfProgress.message}</span>
+          <div style={{ display: "flex", gap: "20px", marginTop: 14, marginBottom: 8 }}>
+            <div style={{ flex: 1 }} className="mr-[10px]">
+              <RequiredLabel>Invoice Date</RequiredLabel>
+              <input
+                type="date"
+                value={invoiceDate}
+                onChange={(e) => setInvoiceDate(e.target.value)}
+                aria-invalid={!!errors.invoiceDate}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  borderRadius: 10,
+                  border: `1px solid ${errors.invoiceDate ? "#d32f2f" : "#ccc"}`,
+                }}
+              />
+              {errors.invoiceDate && <small style={{ color: "#d32f2f" }}>{errors.invoiceDate}</small>}
             </div>
-            <div style={{ width: "100%", height: "8px", backgroundColor: "#e0e0e0", borderRadius: "4px", overflow: "hidden" }}>
-              <div style={{ width: `${pdfProgress.progress}%`, height: "100%", backgroundColor: "#2196f3", transition: "width 0.3s ease" }}></div>
-            </div>
-            <div style={{ textAlign: "center", marginTop: "8px", fontSize: "12px", color: "#666" }}>
-              {pdfProgress.progress}% Complete
+
+            <div style={{ flex: 1 }}>
+              <RequiredLabel>Title of Invoice</RequiredLabel>
+              <input
+                type="text"
+                value={invoiceTitle}
+                onChange={(e) => setInvoiceTitle(e.target.value)}
+                aria-invalid={!!errors.invoiceTitle}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  borderRadius: 10,
+                  border: `1px solid ${errors.invoiceTitle ? "#d32f2f" : "#ccc"}`,
+                }}
+              />
+              {errors.invoiceTitle && <small style={{ color: "#d32f2f" }}>{errors.invoiceTitle}</small>}
             </div>
           </div>
-        )}
 
-        <div style={{ display: "flex", justifyContent: "center", marginTop: "20px" }}>
-          <div style={{ display: "flex", gap: "16px", maxWidth: "400px", width: "100%" }}>
-            <button
-              type="submit"
-              disabled={isGeneratingPDF}
-              style={{
-                flex: 1,
-                padding: "16px 24px",
-                background: isGeneratingPDF ? "#cccccc" : "#1E3A8A",
-                color: "#fff",
-                borderRadius: "12px",
-                fontWeight: "bold",
-                fontSize: "18px",
-                border: "2px solid #1E3A8A",
-                cursor: isGeneratingPDF ? "not-allowed" : "pointer",
-                opacity: isGeneratingPDF ? 0.7 : 1,
-                height: "44px",
-                boxShadow: "0 3px 6px rgba(30, 58, 138, 0.2)",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-              onMouseOver={(e) => {
-                if (!isGeneratingPDF) {
+          {/* Invoice Number */}
+          <label style={{ fontWeight: "600" }}>Invoice Number</label>
+          <input type="text" value={previewInvoiceNumber} disabled style={{ width: "100%", padding: "10px", marginBottom: "20px", background: "#ffffff", fontWeight: "bold", borderRadius: "10px" }} />
+
+          {/* Client (filtered by company) */}
+          <RequiredLabel>Select Client</RequiredLabel>
+          <Select
+            isDisabled={!yourCompany}
+            options={filteredClients.map((client) => ({
+              value: client.id,
+              // ✅ Only client name; no dashes or placeholders
+              label: client.client_name || "",
+            }))}
+            value={
+              filteredClients.find((c) => c.id === selectedClientId)
+                ? {
+                    value: selectedClientId,
+                    // ✅ Only client name; no dashes or placeholders
+                    label: selectedClient?.client_name || "",
+                  }
+                : null
+            }
+            onChange={(selected) => {
+              setSelectedClientId(selected?.value || "");
+              const client = filteredClients.find((c) => c.id === selected?.value);
+              setSelectedClient(client || null);
+              setErrors((prev) => ({ ...prev, selectedClientId: "" }));
+            }}
+            placeholder={yourCompany ? "Select Client..." : "Select company first"}
+            isSearchable
+            styles={{
+              control: (base) => ({
+                ...base,
+                padding: 2,
+                marginBottom: 6,
+                borderRadius: 10,
+                opacity: yourCompany ? 1 : 0.7,
+                borderColor: errors.selectedClientId ? "#d32f2f" : base.borderColor,
+                boxShadow: errors.selectedClientId ? "0 0 0 1px #d32f2f" : base.boxShadow,
+                "&:hover": { borderColor: errors.selectedClientId ? "#d32f2f" : base.borderColor },
+              }),
+            }}
+            noOptionsMessage={() => (yourCompany ? "No clients for this company" : "Select company first")}
+          />
+          {errors.selectedClientId && <small style={{ color: "#d32f2f" }}>{errors.selectedClientId}</small>}
+
+          <label style={{ fontWeight: "600", marginTop: "20px", display: "block" }}>Link Project</label>
+          <Select
+            options={projects}
+            value={selectedProject}
+            onChange={(selected) => setSelectedProject(selected)}
+            placeholder="Select Project..."
+            className="link-poject-field"
+            isSearchable
+            styles={{
+              control: (base) => ({
+                ...base,
+                padding: "2px",
+                borderRadius: "10px",
+                marginBottom: "20px",
+              }),
+            }}
+          />
+
+          {/* Services */}
+          <h3 style={{ fontSize: "20px", fontWeight: "600", marginTop: "30px" }}>Services</h3>
+          {errors.services && <small style={{ color: "#d32f2f" }}>{errors.services}</small>}
+
+          {services.map((service, idx) => {
+            const rowErr = errors.serviceRows[idx] || {};
+            return (
+              <div key={idx} className="services-block" style={{ marginBottom: "25px", padding: "20px", background: "#fafafa", border: "1px solid #ddd", borderRadius: "8px" }}>
+                <div style={{ marginBottom: "15px" }}>
+                  <RequiredLabel>Service Name {idx + 1}</RequiredLabel>
+                  <Select
+                    isMulti
+                    options={serviceOptions}
+                    value={(service.name || []).map((n) => serviceOptions.find((opt) => opt.value === n))}
+                    onChange={(selectedOptions) => {
+                      const updated = [...services];
+                      updated[idx].name = (selectedOptions || []).map((opt) => opt.value);
+                      setServices(updated);
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        if (next.serviceRows[idx]?.name) {
+                          next.serviceRows = {
+                            ...next.serviceRows,
+                            [idx]: { ...next.serviceRows[idx], name: "" },
+                          };
+                        }
+                        return next;
+                      });
+                    }}
+                    placeholder="Select Service(s)"
+                    isSearchable
+                    styles={{
+                      control: (base) => ({
+                        ...base,
+                        minHeight: "44px",
+                        padding: "2px",
+                        borderColor: rowErr.name ? "#d32f2f" : "#ccc",
+                      }),
+                    }}
+                  />
+                  {rowErr.name && <small style={{ color: "#d32f2f" }}>{rowErr.name}</small>}
+                </div>
+
+                <div style={{ marginBottom: "15px" }}>
+                  <RequiredLabel>Service Description</RequiredLabel>
+                  <textarea
+                    value={service.description || ""}
+                    onChange={(e) => {
+                      const updated = [...services];
+                      updated[idx].description = e.target.value;
+                      setServices(updated);
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        if (next.serviceRows[idx]?.description) {
+                          next.serviceRows = { ...next.serviceRows, [idx]: { ...next.serviceRows[idx], description: "" } };
+                        }
+                        return next;
+                      });
+                    }}
+                    placeholder="Enter Service Description"
+                    style={{ width: "100%", padding: "10px", borderRadius: "5px", border: `1px solid ${rowErr.description ? "#d32f2f" : "#ccc"}` }}
+                    rows={3}
+                  />
+                  {rowErr.description && <small style={{ color: "#d32f2f" }}>{rowErr.description}</small>}
+                </div>
+
+                <div style={{ marginBottom: "15px" }}>
+                  <RequiredLabel>Service Amount ₹</RequiredLabel>
+                  <input
+                    type="number"
+                    min="1"
+                    step="any"
+                    value={service.amount ?? ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const updated = [...services];
+                      updated[idx].amount = val === "" ? "" : Math.max(1, Number(val));
+                      setServices(updated);
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        if (next.serviceRows[idx]?.amount) {
+                          next.serviceRows = { ...next.serviceRows, [idx]: { ...next.serviceRows[idx], amount: "" } };
+                        }
+                        return next;
+                      });
+                    }}
+                    placeholder="Enter Amount"
+                    style={{ width: "100%", padding: "10px", borderRadius: "5px", border: `1px solid ${rowErr.amount ? "#d32f2f" : "#ccc"}` }}
+                  />
+                  {rowErr.amount && <small style={{ color: "#d32f2f" }}>{rowErr.amount}</small>}
+                </div>
+
+                {services.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = [...services];
+                      updated.splice(idx, 1);
+                      setServices(updated);
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        const { [idx]: _, ...rest } = next.serviceRows;
+                        next.serviceRows = rest;
+                        return next;
+                      });
+                    }}
+                    style={{ backgroundColor: "#dc3545", color: "#fff", padding: "6px 12px", border: "none", borderRadius: "4px", fontWeight: "bold", cursor: "pointer" }}
+                  >
+                    Remove Service
+                  </button>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Add Service Button */}
+          <button
+            type="button"
+            onClick={() => setServices([...services, { name: [], description: "", amount: "" }])}
+            style={{ marginBottom: "20px", padding: "10px 20px", background: "rgb(59 89 151)", color: "#fff", borderRadius: "5px", fontWeight: "bold" }}
+          >
+            {services.length === 0 ? "Add Service" : "Add Another Service"}
+          </button>
+
+          {/* Payment Status */}
+          <div style={{ marginBottom: "20px" }}>
+            <label style={{ fontWeight: "600" }}>Payment Status</label>
+            <select
+              value={paymentStatus}
+              onChange={(e) => setPaymentStatus(e.target.value)}
+              style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px solid #ccc" }}
+            >
+              <option value="Pending">Pending</option>
+              <option value="Paid">Paid</option>
+              <option value="Partial">Partial</option>
+            </select>
+          </div>
+
+          {/* GST Payment Status */}
+          <div style={{ marginBottom: "20px" }}>
+            <label style={{ fontWeight: "600" }}>GST Payment Status</label>
+            <select
+              value={gstPaymentStatus}
+              onChange={(e) => setGstPaymentStatus(e.target.value)}
+              disabled={!(selectedClient && selectedClient.country === "India")}
+              style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px solid #ccc", background: !(selectedClient && selectedClient.country === "India") ? "#f3f4f6" : "#fff" }}
+              title={!(selectedClient && selectedClient.country === "India") ? "GST not applicable for this client" : ""}
+            >
+              <option value="Pending">Pending</option>
+              <option value="Paid">Paid</option>
+              <option value="Partial">Partial</option>
+            </select>
+            {!(selectedClient && selectedClient.country === "India") && (
+              <small style={{ color: "#666" }}>
+                GST not applicable (international client) — saved as "NA".
+              </small>
+            )}
+          </div>
+
+          {/* Totals — show only applicable GST lines */}
+          <div style={{ background: "#f9f9f9", padding: "20px", borderRadius: "8px", marginBottom: "20px" }}>
+            <p>Subtotal: ₹{formatAmount(subtotal)}</p>
+            {cgst > 0 && <p>CGST ({cgstRate}%): ₹{formatAmount(cgst)}</p>}
+            {sgst > 0 && <p>SGST ({sgstRate}%): ₹{formatAmount(sgst)}</p>}
+            {igst > 0 && <p>IGST ({igstRate}%): ₹{formatAmount(igst)}</p>}
+            <p><b>Total Tax:</b> ₹{formatAmount(tax_amount)}</p>
+            <p><b>Total Amount:</b> ₹{formatAmount(grand_total)}</p>
+          </div>
+
+          {/* Progress Box */}
+          {isGeneratingPDF && (
+            <div style={{ background: "#e3f2fd", padding: "20px", borderRadius: "8px", marginBottom: "20px", border: "1px solid #2196f3" }}>
+              <div style={{ display: "flex", alignItems: "center", marginBottom: "10px" }}>
+                <div style={{ width: "20px", height: "20px", border: "2px solid #2196f3", borderTop: "2px solid transparent", borderRadius: "50%", animation: "spin 1s linear infinite", marginRight: "10px" }}></div>
+                <span style={{ fontWeight: "bold", color: "#1976d2" }}>{pdfProgress.message}</span>
+              </div>
+              <div style={{ width: "100%", height: "8px", backgroundColor: "#e0e0e0", borderRadius: "4px", overflow: "hidden" }}>
+                <div style={{ width: `${pdfProgress.progress}%`, height: "100%", backgroundColor: "#2196f3", transition: "width 0.3s ease" }}></div>
+              </div>
+              <div style={{ textAlign: "center", marginTop: "8px", fontSize: "12px", color: "#666" }}>
+                {pdfProgress.progress}% Complete
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "flex", justifyContent: "center", marginTop: "20px" }}>
+            <div style={{ display: "flex", gap: "16px", maxWidth: "400px", width: "100%" }}>
+              <button
+                type="submit"
+                disabled={isGeneratingPDF}
+                style={{
+                  flex: 1,
+                  padding: "16px 24px",
+                  background: isGeneratingPDF ? "#cccccc" : "#1E3A8A",
+                  color: "#fff",
+                  borderRadius: "12px",
+                  fontWeight: "bold",
+                  fontSize: "18px",
+                  border: "2px solid #1E3A8A",
+                  cursor: isGeneratingPDF ? "not-allowed" : "pointer",
+                  opacity: isGeneratingPDF ? 0.7 : 1,
+                  height: "44px",
+                  boxShadow: "0 3px 6px rgba(30, 58, 138, 0.2)",
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+                onMouseOver={(e) => {
+                  if (!isGeneratingPDF) {
+                    e.target.style.backgroundColor = "#3b5997";
+                    e.target.style.borderColor = "#3b5997";
+                    e.target.style.boxShadow = "0 5px 10px #3b5997";
+                  }
+                }}
+                onMouseOut={(e) => {
+                  if (!isGeneratingPDF) {
+                    e.target.style.backgroundColor = "#3b5997";
+                    e.target.style.borderColor = "#3b5997";
+                    e.target.style.boxShadow = "0 3px 6px #3b5997";
+                  }
+                }}
+              >
+                {isGeneratingPDF ? "Processing..." : "Submit Invoice"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  // Clear all form fields
+                  setYourCompany("");
+                  setSelectedClientId("");
+                  setSelectedClient(null);
+                  setSelectedProject(null);
+                  setPreviewInvoiceNumber("");
+                  setInvoiceTitle("");
+                  setServices([]);
+                  setPaymentStatus("Pending");
+                  setGstPaymentStatus("Pending");
+                  setErrors({
+                    yourCompany: "",
+                    invoiceDate: "",
+                    invoiceTitle: "",
+                    selectedClientId: "",
+                    services: "",
+                    serviceRows: {},
+                  });
+
+                }}
+                style={{
+                  flex: 1,
+                  padding: "16px 24px",
+                  background: "#3b5997",
+                  color: "#fff",
+                  borderRadius: "12px",
+                  fontWeight: "bold",
+                  fontSize: "18px",
+                  border: "2px solid #3b5997",
+                  cursor: "pointer",
+                  height: "44px",
+                  boxShadow: "0 3px 6px #3b5997",
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+                onMouseOver={(e) => {
                   e.target.style.backgroundColor = "#3b5997";
                   e.target.style.borderColor = "#3b5997";
                   e.target.style.boxShadow = "0 5px 10px #3b5997";
-                }
-              }}
-              onMouseOut={(e) => {
-                if (!isGeneratingPDF) {
+                }}
+                onMouseOut={(e) => {
                   e.target.style.backgroundColor = "#3b5997";
                   e.target.style.borderColor = "#3b5997";
                   e.target.style.boxShadow = "0 3px 6px #3b5997";
-                }
-              }}
-            >
-              {isGeneratingPDF ? "Processing..." : "Submit Invoice"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                // Clear all form fields
-                setYourCompany("");
-                setSelectedClientId("");
-                setSelectedClient(null);
-                setSelectedProject(null);
-                setPreviewInvoiceNumber("");
-                setInvoiceTitle("");
-                setServices([]);
-                setPaymentStatus("Pending");
-                setGstPaymentStatus("Pending");
-                setErrors({
-                  yourCompany: "",
-                  invoiceDate: "",
-                  invoiceTitle: "",
-                  selectedClientId: "",
-                  services: "",
-                  serviceRows: {},
-                });
-
-              }}
-              style={{
-                flex: 1,
-                padding: "16px 24px",
-                background: "#3b5997",
-                color: "#fff",
-                borderRadius: "12px",
-                fontWeight: "bold",
-                fontSize: "18px",
-                border: "2px solid #3b5997",
-                cursor: "pointer",
-                height: "44px",
-                boxShadow: "0 3px 6px #3b5997",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-              onMouseOver={(e) => {
-                e.target.style.backgroundColor = "#3b5997";
-                e.target.style.borderColor = "#3b5997";
-                e.target.style.boxShadow = "0 5px 10px #3b5997";
-              }}
-              onMouseOut={(e) => {
-                e.target.style.backgroundColor = "#3b5997";
-                e.target.style.borderColor = "#3b5997";
-                e.target.style.boxShadow = "0 3px 6px #3b5997";
-              }}
-            >
-              Clear Form
-            </button>
+                }}
+              >
+                Clear Form
+              </button>
+            </div>
           </div>
-        </div>
 
-        <style jsx>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
+          <style jsx>{`
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
 
-          /* ✅ Remove arrows from number inputs (Chrome/Safari/Edge/Opera + Firefox) */
-          input[type=number]::-webkit-inner-spin-button,
-          input[type=number]::-webkit-outer-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-          }
-          input[type=number] {
-            -moz-appearance: textfield;
-          }
-        `}</style>
+            /* ✅ Remove arrows from number inputs (Chrome/Safari/Edge/Opera + Firefox) */
+            input[type=number]::-webkit-inner-spin-button,
+            input[type=number]::-webkit-outer-spin-button {
+              -webkit-appearance: none;
+              margin: 0;
+            }
+            input[type=number] {
+              -moz-appearance: textfield;
+            }
+          `}</style>
         </div>
       </form>
     </div>

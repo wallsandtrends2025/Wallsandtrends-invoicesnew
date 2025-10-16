@@ -35,6 +35,8 @@ export default function DashboardLayout() {
     () => ({
       client:
         isActive("/dashboard/add-client") || isActive("/dashboard/all-clients"),
+        poc:
+        isActive("/dashboard/add-poc") || isActive("/dashboard/all-pocs"),
       project:
         isActive("/dashboard/add-project") || isActive("/dashboard/all-projects"),
       proforma:
@@ -49,6 +51,7 @@ export default function DashboardLayout() {
 
   useEffect(() => {
     if (activeMap.client) setOpenKey("client");
+    else if (activeMap.poc) setOpenKey("poc");
     else if (activeMap.project) setOpenKey("project");
     else if (activeMap.proforma) setOpenKey("proforma");
     else if (activeMap.invoice) setOpenKey("invoice");
@@ -192,6 +195,7 @@ function SidebarContent({ onLinkClick }) {
 
   useEffect(() => {
     if (isActive("/dashboard/add-client") || isActive("/dashboard/all-clients")) setOpenKey("client");
+       else if (isActive("/dashboard/add-poc") || isActive("/dashboard/all-pocs")) setOpenKey("poc"); // NEW
     else if (isActive("/dashboard/add-project") || isActive("/dashboard/all-projects")) setOpenKey("project");
     else if (isActive("/dashboard/create-quotation") || isActive("/dashboard/quotations")) setOpenKey("proforma");
     else if (isActive("/dashboard/create-invoice") || isActive("/dashboard/all-invoices")) setOpenKey("invoice");
@@ -222,7 +226,19 @@ function SidebarContent({ onLinkClick }) {
           ]}
           onLinkClick={onLinkClick}
         />
-
+{/* NEW: POC Management */}
+        <RowDropdown
+          id="poc"
+          label="POC Management"
+          icon={<UserIcon />}
+          isOpen={openKey === "poc"}
+          onToggle={() => toggle("poc")}
+          items={[
+            { to: "/dashboard/add-poc", label: "Add POC" },
+            { to: "/dashboard/all-pocs", label: "All POCs" },
+          ]}
+          onLinkClick={onLinkClick}
+        />
         <RowDropdown
           id="project"
           label="Project Management"

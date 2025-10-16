@@ -388,7 +388,7 @@ export default function EditInvoice() {
               />
             </div>
 
-            <div className="md:col-span-2 space-y-2">
+            <div className=" space-y-2">
               <label className={labelClass(false)}>Invoice Title</label>
               <input
                 type="text"
@@ -507,7 +507,7 @@ export default function EditInvoice() {
                   <textarea
                     value={row.description || ""}
                     onChange={(e) => updateService(idx, { description: e.target.value })}
-                    className="w-full border border-gray-300 px-3 py-2 rounded-[10px] focus:outline-none focus:ring-2 focus:ring-gray-200"
+                    className=" border border-gray-300 px-3 py-2 rounded-[10px] focus:outline-none focus:ring-2 focus:ring-gray-200"
                     rows={3}
                     placeholder="Enter Service Description"
                   />
@@ -521,7 +521,7 @@ export default function EditInvoice() {
                     type="number"
                     value={row.amount ?? 0}
                     onChange={(e) => updateService(idx, { amount: Number(e.target.value || 0) })}
-                    className="w-full border border-gray-300 px-3 py-2 rounded-[10px] focus:outline-none focus:ring-2 focus:ring-gray-200"
+                    className=" border border-gray-300 px-3 py-2 rounded-[10px] focus:outline-none focus:ring-2 focus:ring-gray-200"
                   />
                 </div>
 
@@ -542,7 +542,7 @@ export default function EditInvoice() {
           <div className="my-8 border-t border-gray-200" />
           <div className="mb-10">
             <h3 className="text-lg font-semibold text-gray-900 mb-3">Totals</h3>
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 total-amount" >
               <p className="mb-1">Subtotal: ₹{currency(subtotal)}</p>
               {cgst > 0 && <p className="mb-1">CGST ({cgstRate}%): ₹{currency(cgst)}</p>}
               {sgst > 0 && <p className="mb-1">SGST ({sgstRate}%): ₹{currency(sgst)}</p>}
@@ -678,9 +678,9 @@ export default function EditInvoice() {
 
           {/* ===== Actions ===== */}
           <div className="flex justify-end gap-3 mt-8">
-            <button type="button" onClick={() => navigate(-1)} className={outlineBtn} disabled={saving}>
+            {/* <button type="button" onClick={() => navigate(-1)} className={outlineBtn} disabled={saving}>
               ← Back
-            </button>
+            </button> */}
             <button
               type="submit"
               disabled={
