@@ -95,7 +95,7 @@ export default function CreateProforma() {
         const snapshot = await getDocs(collection(db, "clients"));
         const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
         console.log('✅ DEBUG: CreateQuotation - Loaded clients:', list.length, 'clients');
-        console.log('✅ DEBUG: CreateQuotation - Client data sample:', list.slice(0, 3)); // Show first 3 clients
+        console.log('✅ DEBUG: CreateQuotation - Client data sample:', list.slice(0, 3));
         console.log('✅ DEBUG: CreateQuotation - All client company_groups:', [...new Set(list.map(c => c.company_group))]);
         console.log('✅ DEBUG: CreateQuotation - All client company_names:', [...new Set(list.map(c => c.company_name))]);
         setClients(list);
@@ -138,7 +138,7 @@ export default function CreateProforma() {
     }
   };
 
-  // match CreateInvoice UX: company → group → filtered clients (optional but helpful)
+  // match CreateInvoice UX: company → group → filtered clients
   const companyToGroup = {
     WT: "WT",
     WTPL: "WT",  // WTPL should show same clients as WT
@@ -211,7 +211,7 @@ export default function CreateProforma() {
   // computed totals
   const subtotal = services.reduce((sum, s) => sum + Number(s.amount || 0), 0);
 
-  // sanitize services (like CreateInvoice)
+  // sanitize services
   const sanitizeServices = () =>
     services.map((s, i) => {
       const nameStr = Array.isArray(s?.name)
@@ -225,7 +225,7 @@ export default function CreateProforma() {
       };
     });
 
-  // validation (same pattern as CreateInvoice)
+  // validation
   const validate = () => {
     const next = {
       yourCompany: "",
@@ -288,10 +288,10 @@ export default function CreateProforma() {
       proforma_type: yourCompany,
       proforma_title: proformaTitle,
       proforma_date: proformaDate,
-      services: sanitized, // keep array (consistent with invoices)
+      services: sanitized,
       subtotal: Number(amount.toFixed(2)),
       total_amount: Number(amount.toFixed(2)),
-      payment_status: paymentStatus, // Pending | Confirmed | Rejected (your original)
+      payment_status: paymentStatus,
       pdf_url: "",
       created_at: new Date(),
     };
@@ -393,19 +393,21 @@ export default function CreateProforma() {
             }}
           />
 
-          {/* Client (disabled until company picked, filtered by group) */}
+          {/* Client (filtered by group) */}
           <RequiredLabel>Select Client</RequiredLabel>
           <Select
             isDisabled={!yourCompany}
             options={filteredClients.map((c) => ({
               value: c.id,
-              label: `${c.client_name ?? "—"}`,
+              // ✅ Only client name; no dashes/placeholders
+              label: c.client_name || "",
             }))}
             value={
               filteredClients.find((c) => c.id === selectedClientId)
                 ? {
                     value: selectedClientId,
-                    label: `${selectedClient?.company_name ?? "—"} — ${selectedClient?.client_name ?? "—"}`,
+                    // ✅ Only client name; no dashes/placeholders
+                    label: selectedClient?.client_name || "",
                   }
                 : null
             }
@@ -438,7 +440,7 @@ export default function CreateProforma() {
           />
           {errors.selectedClientId && <small style={{ color: "#d32f2f" }}>{errors.selectedClientId}</small>}
 
-          {/* Services (same card style as invoice) */}
+          {/* Services */}
           <h3 style={{ fontSize: 20, fontWeight: 600, marginTop: 30 }}>Services</h3>
           {errors.services && <small style={{ color: "#d32f2f" }}>{errors.services}</small>}
 
@@ -590,7 +592,7 @@ export default function CreateProforma() {
             );
           })}
 
-          {/* Add Service Button (same palette as CreateInvoice) */}
+          {/* Add Service Button */}
           <button
             type="button"
             onClick={() =>

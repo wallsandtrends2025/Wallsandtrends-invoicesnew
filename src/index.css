@@ -169,7 +169,10 @@ table{border: 1px solid #AAAAAA;}
 .link-poject-field input{border:0 !important;}
 .services-block input{border: 0 !important;}
 .sidebar svg{color: #ffffff;}
-
+.width-btn{width: 100px;}
+.total-amount{height:170px;}
+@media (max-width:1300px){select{font-size: 13px;
+    padding: 4px !important;}}
 @media (max-width:1200px){
   nav .relative{padding: 0 5px;color: #ffffff;}
   nav .relative button{font-size: 11px;}

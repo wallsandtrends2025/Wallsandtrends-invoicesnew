@@ -317,7 +317,7 @@ export default function AddProject() {
                     brandName: "",
                   }));
                 }}
-                className={`${inputClass(!!errors.company)} border-curve`}
+                className={`${inputClass(!!errors.company)} border-curve `}
                 required
               >
                 <option value="">Select Company</option>
@@ -333,7 +333,7 @@ export default function AddProject() {
             <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">
               <label className={labelClass(!!errors.client)}>Select Client</label>
               <Select
-                className="border-curve"
+                className="border-curve mt-[10px] mb-[10px]"
                 classNamePrefix="rs"
                 styles={rsStyles}
                 options={filteredClientOptions}
@@ -454,46 +454,43 @@ export default function AddProject() {
             <div className="pl-[15px] pr-[15px] pt-[5px] pb-[5px]">{/* spacer */}</div>
 
             {/* Submit Buttons */}
-            <div className="col-span-2 flex justify-center items-center pt-[10px] pb-[10px]">
-              <div className="flex gap-3 w-full max-w-[200px]">
-                <button
-                  type="submit"
-                  className="bg-[#3b5997] text-[#ffffff] font-semibold rounded-[10px] flex-1 h-[32px] border-0 hover:bg-[#3b5997] transition-colors"
-                >
-                  Submit Project
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    // Clear all fields
-                    setProjectName("");
-                    setCompany("");
-                    setMovieName("");
-                    setBrandName("");
-                    setSelectedClient(null);
-                    setPoc("");
-                    setSelectedServices([]);
-                    setClientPocName("");
-                    setClientPocPhone("");
-                    setClientPocEmail("");
-                    setErrors({
-                      projectName: "",
-                      company: "",
-                      movieName: "",
-                      brandName: "",
-                      client: "",
-                      poc: "",
-                    });
-                    console.log("Clear Form button clicked - form cleared");
-                    alert("Form has been cleared!");
-                  }}
-                  className="bg-[#3b5997] text-[#ffffff] font-semibold rounded-[10px] flex-1 h-[32px] border-0 hover:bg-[#3b5997] transition-colors"
-                >
-                  Clear Form
-                </button>
-              </div>
-            </div>
+           <div className="col-span-2 flex justify-center items-center pt-[10px] pb-[10px]">
+  <div className="flex gap-3">
+    <button
+      type="submit"
+      className="bg-[#3b5997] text-[#ffffff] font-semibold rounded-[8px] px-4 py-2 text-sm hover:bg-[#3b5997] transition"
+    >
+      Submit Project
+    </button>
+    <button
+      type="button"
+      onClick={() => {
+        setProjectName("");
+        setCompany("");
+        setMovieName("");
+        setBrandName("");
+        setSelectedClient(null);
+        setPoc("");
+        setSelectedServices([]);
+        setClientPocName("");
+        setClientPocPhone("");
+        setClientPocEmail("");
+        setErrors({
+          projectName: "",
+          company: "",
+          movieName: "",
+          brandName: "",
+          client: "",
+          poc: "",
+        });
+      }}
+      className="bg-[#3b5997] text-[#ffffff] font-semibold rounded-[8px] px-4 py-2 text-sm hover:bg-[#3b5997] transition"
+    >
+      Clear Form
+    </button>
+  </div>
+</div>
+
           </div>
         </form>
       </div>

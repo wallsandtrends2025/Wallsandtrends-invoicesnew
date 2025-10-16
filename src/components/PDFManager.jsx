@@ -593,7 +593,7 @@ export default function PDFManager() {
           <button
             onClick={handleBack}
             disabled={level === "root"}
-            className="mb-4 text-sm  disabled:opacity-40  back-btn border-0 bg-[#D9D9D9] text-[#2D2D2D] p-[10px] border-curve w-[80px]"
+            className="mb-4 text-sm  disabled:opacity-40  back-btn border-0 bg-[#3b5997] text-[#ffffff] p-[10px] border-curve w-[80px] mb-[20px]"
           >
             ← Back
           </button>
@@ -758,13 +758,13 @@ export default function PDFManager() {
                 <div className="flex gap-2">
                   <button
                     onClick={toggleSelectAllOnPage}
-                    className="px-3 py-1.5 text-xs border rounded-lg hover:bg-gray-100 edit"
+                    className="px-3 py-1.5 text-xs border rounded-lg hover:bg-[#3b5997] edit"
                   >
                     {listRows.length && listRows.every(r => selectedIds.has(r.id)) ? "Unselect All (Page)" : "Select All (Page)"}
                   </button>
                   <button
                     onClick={() => openPreviewsSelected(6)}
-                    className="px-3 py-1.5 text-xs rounded-lg text-white bg-[#037f9e] hover:bg-[#026a83] edit"
+                    className="px-3 py-1.5 text-xs rounded-lg text-white bg-[#037f9e] hover:bg-[#3b5997] edit"
                   >
                     Open Previews (Selected)
                   </button>
