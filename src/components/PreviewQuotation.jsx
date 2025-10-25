@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import { doc, getDoc } from "firebase/firestore";
+import CurrencyService from "../utils/CurrencyService";
 
 export default function PreviewQuotation() { // keep same name to avoid route changes
   const { id } = useParams();
@@ -380,6 +381,21 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
   const isIndian = clientCountry === "india";
   const isTelangana = clientState === "telangana";
 
+  // Currency detection logic for international clients
+  const isInternationalClient = displayClient.country && !clientCountry.includes('india');
+  const clientCurrency = isInternationalClient ? CurrencyService.getDefaultCurrencyForClient(displayClient) : 'INR';
+  const displayCurrency = quote?.currency || clientCurrency;
+  const showINRAmounts = displayCurrency === 'INR';
+
+  console.log('🔍 DEBUG: Proforma Currency Analysis:', {
+    clientCountry: displayClient.country,
+    isInternationalClient,
+    clientCurrency,
+    displayCurrency,
+    showINRAmounts,
+    quoteCurrency: quote?.currency
+  });
+
   let cgstRate = 0,
     sgstRate = 0,
     igstRate = 0;
@@ -579,7 +595,16 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
                   verticalAlign: 'top'
                 }}>
                   <div style={{textAlign: 'left', width: '100%'}}>
-                    <span style={{fontWeight: '600'}}>Total Cost:</span> <span style={{fontWeight: 'normal'}}>INR {fmt2(total)}</span>
+                    <span style={{fontWeight: '600'}}>Total Cost:</span> <span style={{fontWeight: 'normal'}}>
+                      {(() => {
+                        if (showINRAmounts) {
+                          return `INR ${fmt2(total)}`;
+                        } else {
+                          const currencySymbol = CurrencyService.getCurrencySymbol(displayCurrency);
+                          return `${currencySymbol}${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                        }
+                      })()}
+                    </span>
                   </div>
                 </td>
               </tr>
@@ -689,7 +714,7 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
                   textAlign: 'center',
                   backgroundColor: '#ffffff',
                   color: '#000000'
-                }}>Amount (INR)</th>
+                }}>Amount ({showINRAmounts ? 'INR' : displayCurrency})</th>
               </tr>
             </thead>
             <tbody>
@@ -723,7 +748,16 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
                     textAlign: 'center',
                     backgroundColor: '#ffffff',
                     whiteSpace: 'nowrap'
-                  }}>{fmt2(it.amount)}</td>
+                  }}>
+                    {(() => {
+                      if (showINRAmounts) {
+                        return fmt2(it.amount);
+                      } else {
+                        const currencySymbol = CurrencyService.getCurrencySymbol(displayCurrency);
+                        return `${currencySymbol}${it.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                      }
+                    })()}
+                  </td>
                 </tr>
               ))}
 
@@ -753,7 +787,16 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
                   textAlign: 'center',
                   backgroundColor: '#ffffff',
                   whiteSpace: 'nowrap'
-                }}>{fmt2(subtotal)}</td>
+                }}>
+                  {(() => {
+                    if (showINRAmounts) {
+                      return fmt2(subtotal);
+                    } else {
+                      const currencySymbol = CurrencyService.getCurrencySymbol(displayCurrency);
+                      return `${currencySymbol}${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    }
+                  })()}
+                </td>
               </tr>
 
               {isIndian && isTelangana ? (
@@ -773,7 +816,16 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
                       textAlign: 'center',
                       backgroundColor: '#ffffff',
                       whiteSpace: 'nowrap'
-                    }}>{fmt2(cgstAmount)}</td>
+                    }}>
+                      {(() => {
+                        if (showINRAmounts) {
+                          return fmt2(cgstAmount);
+                        } else {
+                          const currencySymbol = CurrencyService.getCurrencySymbol(displayCurrency);
+                          return `${currencySymbol}${cgstAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                        }
+                      })()}
+                    </td>
                   </tr>
                   <tr style={{ border: '1px solid #cccccc' }}>
                     <td className="p-1 text-[6px] text-center" style={{
@@ -790,7 +842,16 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
                       textAlign: 'center',
                       backgroundColor: '#ffffff',
                       whiteSpace: 'nowrap'
-                    }}>{fmt2(sgstAmount)}</td>
+                    }}>
+                      {(() => {
+                        if (showINRAmounts) {
+                          return fmt2(sgstAmount);
+                        } else {
+                          const currencySymbol = CurrencyService.getCurrencySymbol(displayCurrency);
+                          return `${currencySymbol}${sgstAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                        }
+                      })()}
+                    </td>
                   </tr>
                 </>
               ) : (
@@ -809,7 +870,16 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
                     textAlign: 'center',
                     backgroundColor: '#ffffff',
                     whiteSpace: 'nowrap'
-                  }}>{fmt2(igstAmount)}</td>
+                  }}>
+                    {(() => {
+                      if (showINRAmounts) {
+                        return fmt2(igstAmount);
+                      } else {
+                        const currencySymbol = CurrencyService.getCurrencySymbol(displayCurrency);
+                        return `${currencySymbol}${igstAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                      }
+                    })()}
+                  </td>
                 </tr>
               )}
 
@@ -832,7 +902,16 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
                   textAlign: 'center',
                   backgroundColor: '#ffffff',
                   whiteSpace: 'nowrap'
-                }}>{fmt2(total)}</td>
+                }}>
+                  {(() => {
+                    if (showINRAmounts) {
+                      return fmt2(total);
+                    } else {
+                      const currencySymbol = CurrencyService.getCurrencySymbol(displayCurrency);
+                      return `${currencySymbol}${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    }
+                  })()}
+                </td>
               </tr>
 
               {/* Amount in words row */}
@@ -857,7 +936,16 @@ export default function PreviewQuotation() { // keep same name to avoid route ch
                   border: '1px solid #cccccc',
                   textAlign: 'left',
                   backgroundColor: '#ffffff'
-                }}>{numberToWordsINR(total)}</td>
+                }}>
+                  {(() => {
+                    if (showINRAmounts) {
+                      return numberToWordsINR(total);
+                    } else {
+                      const currencyName = CurrencyService.getCurrencyName(displayCurrency);
+                      return `${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currencyName} only`;
+                    }
+                  })()}
+                </td>
               </tr>
             </tbody>
           </table>

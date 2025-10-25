@@ -49,9 +49,10 @@ async function saveChunksToFirestore(chunks) {
  * @param {Object} invoiceData - The invoice data
  * @param {Object} clientData - The client data
  * @param {string} type - PDF type: 'tax' or 'proforma'
+ * @param {string} selectedCurrency - The selected currency for PDF display
  * @returns {Promise<string>} - PDF document ID
  */
-export async function generateAndSaveChunkedPDF(invoiceData, clientData, type = 'tax') {
+export async function generateAndSaveChunkedPDF(invoiceData, clientData, type = 'tax', selectedCurrency = 'INR') {
   try {
     console.log('🔄 Starting chunked PDF generation...', { type, invoiceId: invoiceData?.invoice_id });
     
@@ -103,8 +104,8 @@ export async function generateAndSaveChunkedPDF(invoiceData, clientData, type = 
       const { generateProformaInvoicePDF } = await import('./generateProformaInvoicePDF');
 
       pdfDoc = type === 'proforma'
-        ? await generateProformaInvoicePDF(invoiceData, clientData)
-        : await generateInvoicePDF(invoiceData, clientData);
+        ? await generateProformaInvoicePDF(invoiceData, clientData, { displayCurrency: selectedCurrency })
+        : await generateInvoicePDF(invoiceData, clientData, { displayCurrency: selectedCurrency });
 
       if (!pdfDoc) {
         throw new Error('PDF generation function returned null or undefined');
@@ -260,17 +261,18 @@ export async function generateAndSaveChunkedPDF(invoiceData, clientData, type = 
  * Generates both tax and proforma PDFs and saves them in chunks
  * @param {Object} invoiceData - The invoice data
  * @param {Object} clientData - The client data
+ * @param {string} selectedCurrency - The selected currency for PDF display
  * @returns {Promise<Object>} - Object with both PDF IDs
  */
-export async function generateAndSaveBothChunkedPDFs(invoiceData, clientData) {
+export async function generateAndSaveBothChunkedPDFs(invoiceData, clientData, selectedCurrency = 'INR') {
   try {
-    console.log('🔄 Generating both chunked PDFs...');
-    
+    console.log('🔄 Generating both chunked PDFs...', { selectedCurrency });
+
     const [taxPdfId, proformaPdfId] = await Promise.all([
-      generateAndSaveChunkedPDF(invoiceData, clientData, 'tax'),
-      generateAndSaveChunkedPDF(invoiceData, clientData, 'proforma')
+      generateAndSaveChunkedPDF(invoiceData, clientData, 'tax', selectedCurrency),
+      generateAndSaveChunkedPDF(invoiceData, clientData, 'proforma', selectedCurrency)
     ]);
-    
+
     return {
       taxPdfId,
       proformaPdfId

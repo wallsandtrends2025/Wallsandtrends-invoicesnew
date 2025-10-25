@@ -1,18 +1,21 @@
-// src/pages/CreateInvoice.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  collection,
-  getDocs,
-  doc,
-  setDoc,
-  runTransaction,
-  updateDoc,
-  Timestamp,
-} from "firebase/firestore";
+   collection,
+   getDocs,
+   doc,
+   setDoc,
+   runTransaction,
+   updateDoc,
+   getDoc,
+   Timestamp,
+ } from "firebase/firestore";
 import { db } from "../firebase";
 import Select from "react-select";
 import { generateAndSaveBothChunkedPDFs } from "../utils/pdfChunkedStorage";
+import CurrencyService, { LiveExchangeRateService } from "../utils/CurrencyService";
+import { getCurrencyOptionsForSelect, getSuggestedCurrencyForCountry, STATIC_EXCHANGE_RATES } from "../constants/currencies";
+import { sanitizeAmountInput } from "../utils/generateInvoicePDF";
 
 export default function CreateInvoice() {
   const [yourCompany, setYourCompany] = useState("");
@@ -35,6 +38,13 @@ export default function CreateInvoice() {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [pdfProgress, setPdfProgress] = useState({ stage: "", progress: 0, message: "" });
 
+  // Currency states
+  const [availableCurrencies, setAvailableCurrencies] = useState(["INR"]);
+  const [selectedCurrency, setSelectedCurrency] = useState("INR");
+  const [currencyCalculations, setCurrencyCalculations] = useState(null);
+  const [gstApplicable, setGstApplicable] = useState(true);
+  const [isLoadingCurrency, setIsLoadingCurrency] = useState(false);
+
   // Inline errors (custom validation)
   const [errors, setErrors] = useState({
     yourCompany: "",
@@ -47,14 +57,39 @@ export default function CreateInvoice() {
 
   const navigate = useNavigate();
 
-  // ✅ Amount formatter (Indian style, 30,000.00)
-  const formatAmount = (num) => {
-    if (isNaN(num)) return "0.00";
-    return new Intl.NumberFormat("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(Number(num));
+  // ✅ Multi-currency amount formatter (sync wrapper using pre-calculated values)
+  const formatAmount = (numINR) => {
+    if (isNaN(numINR)) return "0.00";
+    // Use the currencyCalculations state for display values
+    return currencyCalculations ?
+      CurrencyService.formatCurrencyDisplay(numINR, selectedCurrency) :
+      "0.00";
   };
+
+  // Format amount in selected currency (primary display)
+  const formatPrimaryAmount = (amountINR) => {
+    if (isNaN(amountINR)) return `0.00 ${CurrencyService.getCurrencySymbol(selectedCurrency)}`;
+    return CurrencyService.formatCurrencyDisplay(amountINR, selectedCurrency);
+  };
+
+  // Currency options for React Select - Show client currency first, then INR
+  const currencyOptions = useMemo(() => {
+    if (!selectedClient?.country) {
+      // No client selected - show only INR
+      return getCurrencyOptionsForSelect(['INR']);
+    }
+
+    // Get client's local currency
+    const clientCurrency = CurrencyService.getDefaultCurrencyForClient(selectedClient);
+
+    // Create options array: client currency first, then INR
+    const currencies = [clientCurrency];
+    if (clientCurrency !== 'INR') {
+      currencies.push('INR');
+    }
+
+    return getCurrencyOptionsForSelect(currencies);
+  }, [availableCurrencies, selectedClient]);
 
   // helper: renders "Label *" with red asterisk
   const RequiredLabel = ({ children }) => (
@@ -149,7 +184,7 @@ export default function CreateInvoice() {
   };
 
   // sanitize services
-  const sanitizeServices = () =>
+  const sanitizeServices = useMemo(() =>
     services.map((s, i) => {
       const nameStr = Array.isArray(s?.name)
         ? s.name.filter(Boolean).join(", ")
@@ -160,11 +195,15 @@ export default function CreateInvoice() {
         description: String(s?.description ?? ""),
         amount: isNaN(amountNum) ? 0 : amountNum,
       };
-    });
+    }), [services]);
 
   // computed amounts
-  const sanitized = sanitizeServices();
-  const subtotal = sanitized.reduce((sum, s) => sum + Number(s.amount || 0), 0);
+  const sanitized = sanitizeServices;
+  const subtotal = sanitized.reduce((sum, s) => {
+    const sanitizedAmount = CurrencyService.sanitizeAmount(s.amount || 0);
+    console.log(`🔍 DEBUG: Service amount sanitization: "${s.amount}" → ${sanitizedAmount}`);
+    return sum + sanitizedAmount;
+  }, 0);
 
   const isIndian = selectedClient?.country === "India";
   const isTelangana = selectedClient?.state === "Telangana";
@@ -252,6 +291,165 @@ export default function CreateInvoice() {
     }
   }, [yourCompany, filteredClients, selectedClientId]);
 
+  // Handle async currency calculations
+  useEffect(() => {
+    let isCancelled = false;
+
+    const performCurrencyCalculations = async () => {
+      try {
+        console.log('🔄 DEBUG: Starting currency calculations...', {
+          servicesCount: services.length,
+          selectedCurrency,
+          hasClient: !!selectedClient
+        });
+
+        if (services.length === 0) {
+          console.log('ℹ️ DEBUG: No services, clearing calculations');
+          if (!isCancelled) {
+            setCurrencyCalculations(null);
+            setIsLoadingCurrency(false);
+          }
+          return;
+        }
+
+        if (!isCancelled) {
+          setIsLoadingCurrency(true);
+          console.log('⏳ DEBUG: Set loading state, starting calculations...');
+        }
+
+        // Use setTimeout to avoid blocking UI during calculations
+        setTimeout(async () => {
+          try {
+            console.log('🔢 DEBUG: Processing services for calculations...');
+            const sanitized = sanitizeServices || [];
+            const subtotalInSelectedCurrency = sanitized.reduce((sum, s) => sum + CurrencyService.sanitizeAmount(s.amount || 0), 0);
+
+            console.log('💰 DEBUG: Subtotal calculated:', {
+              subtotalInSelectedCurrency,
+              services: sanitized.map(s => ({ name: s.name, amount: s.amount }))
+            });
+
+            if (!isCancelled) {
+              // Convert to INR for GST calculations (GST only applies to INR)
+              console.log('🔄 DEBUG: Converting to INR for GST calculations...', {
+                subtotalInSelectedCurrency,
+                selectedCurrency,
+                isInternationalClient: selectedClient?.country && !selectedClient.country.toLowerCase().includes('india')
+              });
+              const subtotalINR = await CurrencyService.convertCurrencyToINR(subtotalInSelectedCurrency, selectedCurrency);
+
+              // Enhanced GST logic: Apply GST for INR currency regardless of client country
+              const isINRSelected = selectedCurrency === 'INR';
+              const gstApplicable = isINRSelected; // GST applies when INR is selected
+
+              let gstCalculation;
+              if (gstApplicable) {
+                // Check if client is international but INR is selected - apply 18% international tax
+                const isInternationalClient = selectedClient?.country && !selectedClient.country.toLowerCase().includes('india');
+                if (isInternationalClient && isINRSelected) {
+                  // Apply 18% international tax for non-Indian clients using INR
+                  const internationalTaxAmount = (subtotalINR * 18) / 100;
+                  gstCalculation = {
+                    cgstAmount: 0,
+                    sgstAmount: 0,
+                    igstAmount: internationalTaxAmount,
+                    cgstRate: 0,
+                    sgstRate: 0,
+                    igstRate: 18,
+                    totalTax: internationalTaxAmount,
+                    totalAmount: subtotalINR + internationalTaxAmount,
+                    isInternationalTax: true,
+                    taxType: 'international'
+                  };
+                  console.log('🌍 DEBUG: Applied 18% international tax for non-Indian client using INR');
+                } else {
+                  // Regular GST calculation for Indian clients or when GST is applicable
+                  gstCalculation = CurrencyService.calculateGST(subtotalINR, selectedClient?.state, selectedClient);
+                }
+              } else {
+                gstCalculation = { cgstAmount: 0, sgstAmount: 0, igstAmount: 0, totalTax: 0, totalAmount: subtotalINR };
+              }
+
+              // Final amounts
+              const subtotal = gstApplicable ? subtotalINR : subtotalINR;
+              const tax_amount = gstCalculation.totalTax;
+              const grand_total = gstCalculation.totalAmount;
+
+              // Display amounts in selected currency
+              const subtotalDisplay = CurrencyService.formatCurrencyDisplay(subtotalINR, selectedCurrency);
+              const taxDisplay = CurrencyService.formatCurrencyDisplay(tax_amount, selectedCurrency);
+              const grandTotalDisplay = CurrencyService.formatCurrencyDisplay(grand_total, selectedCurrency);
+
+              console.log('✅ DEBUG: Calculations completed:', {
+                subtotalINR,
+                gstApplicable,
+                grand_total,
+                subtotalDisplay,
+                taxDisplay,
+                grandTotalDisplay
+              });
+
+              if (!isCancelled) {
+                setCurrencyCalculations({
+                  subtotalInSelectedCurrency,
+                  subtotalINR,
+                  gstCalculation,
+                  gstApplicable,
+                  subtotal,
+                  tax_amount,
+                  grand_total,
+                  subtotalDisplay,
+                  taxDisplay,
+                  grandTotalDisplay
+                });
+
+                console.log(`✅ DEBUG: Currency calculations state updated for ${selectedCurrency}`);
+              }
+            }
+          } catch (error) {
+            if (!isCancelled) {
+              console.error('❌ Error in currency calculations:', error);
+              console.error('❌ Error details:', {
+                services: services.length,
+                selectedCurrency,
+                selectedClient: !!selectedClient
+              });
+            }
+          } finally {
+            if (!isCancelled) {
+              setIsLoadingCurrency(false);
+              console.log('🏁 DEBUG: Currency calculations finished');
+            }
+          }
+        }, 100); // Small delay to prevent blocking UI
+
+      } catch (error) {
+        if (!isCancelled) {
+          console.error('❌ Error setting up currency calculations:', error);
+          setIsLoadingCurrency(false);
+        }
+      }
+    };
+
+    performCurrencyCalculations();
+
+    // Cleanup function to prevent state updates after component unmount
+    return () => {
+      isCancelled = true;
+    };
+  }, [services, selectedCurrency, selectedClient?.state]);
+
+  // Periodic cache cleanup to prevent memory leaks
+  useEffect(() => {
+    const cleanupInterval = setInterval(() => {
+      if (CurrencyService.cleanup && typeof CurrencyService.cleanup === 'function') {
+        CurrencyService.cleanup();
+      }
+    }, 60000); // Cleanup every minute
+
+    return () => clearInterval(cleanupInterval);
+  }, []);
+
   // validation
   const validate = () => {
     const nextErrors = {
@@ -282,6 +480,10 @@ export default function CreateInvoice() {
           rowErr.amount = "Enter a valid amount.";
         } else if (Number(amt) <= 0) {
           rowErr.amount = "Amount must be greater than 0.";
+        } else if (selectedCurrency === "INR" && Number(amt) < 1) {
+          rowErr.amount = "INR amount must be at least ₹1.";
+        } else if (selectedCurrency !== "INR" && Number(amt) < 0.01) {
+          rowErr.amount = `Amount must be at least ${CurrencyService.getCurrencySymbol(selectedCurrency)}0.01.`;
         }
         if (!String(s?.description || "").trim()) {
           rowErr.description = "Enter a short description.";
@@ -311,8 +513,12 @@ export default function CreateInvoice() {
     setIsGeneratingPDF(true);
     setPdfProgress({ stage: "starting", progress: 5, message: "Creating invoice..." });
 
-    const sanitizedNow = sanitizeServices();
-    const subtotalNow = sanitizedNow.reduce((sum, s) => sum + Number(s.amount || 0), 0);
+    const sanitizedNow = sanitizeServices;
+    const subtotalNow = sanitizedNow.reduce((sum, s) => {
+      const sanitizedAmount = CurrencyService.sanitizeAmount(s.amount || 0);
+      console.log(`🔍 DEBUG: Service amount sanitization: "${s.amount}" → ${sanitizedAmount}`);
+      return sum + sanitizedAmount;
+    }, 0);
 
     const isIndianNow = selectedClient?.country === "India";
     const isTelanganaNow = selectedClient?.state === "Telangana";
@@ -330,6 +536,10 @@ export default function CreateInvoice() {
 
     const isGSTApplicable = !!selectedClient && isIndianNow;
 
+    // Get current exchange rate for storage
+    const currentExchangeRate = await CurrencyService.getExchangeRateWithRefresh(selectedCurrency);
+    const isLive = LiveExchangeRateService.isUsingLiveRates();
+
     const invoiceData = {
       invoice_id: previewInvoiceNumber,
       client_id: selectedClientId,
@@ -337,6 +547,8 @@ export default function CreateInvoice() {
       invoice_type: yourCompany,
       invoice_title: invoiceTitle,
       invoice_date: invoiceDate,
+      currency: selectedCurrency, // Add currency field
+      exchange_rate: currentExchangeRate, // Add exchange rate
       services: sanitizedNow,
       subtotal: Number(subtotalNow.toFixed(2)),
       cgst: Number(cgstNow.toFixed(2)),
@@ -351,7 +563,22 @@ export default function CreateInvoice() {
       tax_pdf_url: "",
       proforma_pdf_url: "",
       created_at: Timestamp.now(),
+      // Metadata
+      live_rates_used: isLive,
+      static_rates_used: !isLive,
+      rate_source: isLive ? 'live_api' : 'static_fallback'
     };
+
+    console.log('🔍 DEBUG: CreateInvoice - Invoice data being saved:', {
+      invoice_id: invoiceData.invoice_id,
+      client_id: invoiceData.client_id,
+      selectedCurrency: selectedCurrency,
+      currency: selectedCurrency,
+      clientCountry: selectedClient?.country,
+      isJapaneseClient: selectedClient?.country?.toLowerCase().includes('japan'),
+      subtotal: invoiceData.subtotal,
+      total_amount: invoiceData.total_amount
+    });
 
     try {
       setPdfProgress({ stage: "saving", progress: 15, message: "Saving invoice to database..." });
@@ -370,6 +597,7 @@ export default function CreateInvoice() {
         project_name: selectedProject?.label ?? "",
         company_bucket: ["WT", "WTPL"].includes(yourCompany) ? "WT" : "WTX",
         gst_payment_status: invoiceData.gst_payment_status,
+        currency: selectedCurrency, // Ensure currency is included in PDF data
         line_items: sanitizedNow.map((s) => ({
           name: s.name,
           description: s.description,
@@ -379,7 +607,8 @@ export default function CreateInvoice() {
 
       const { taxPdfId, proformaPdfId } = await generateAndSaveBothChunkedPDFs(
         pdfInvoiceData,
-        selectedClient
+        selectedClient,
+        selectedCurrency
       );
 
       setPdfProgress({ stage: "updating", progress: 90, message: "Updating invoice with PDF references..." });
@@ -496,6 +725,35 @@ export default function CreateInvoice() {
               setSelectedClientId(selected?.value || "");
               const client = filteredClients.find((c) => c.id === selected?.value);
               setSelectedClient(client || null);
+
+              // Set default currency to client's local currency (not INR)
+              if (client?.country) {
+                const clientCurrency = CurrencyService.getDefaultCurrencyForClient(client);
+                console.log('🔍 DEBUG: CreateInvoice - Client selected:', {
+                  clientName: client.client_name,
+                  clientCountry: client.country,
+                  clientCurrency: clientCurrency,
+                  isJapaneseClient: client.country?.toLowerCase().includes('japan')
+                });
+                setSelectedCurrency(clientCurrency);
+
+                // Update GST payment status based on client's local currency
+                const gstApplicable = CurrencyService.isGSTApplicable(clientCurrency);
+                if (!gstApplicable) {
+                  setGstPaymentStatus("NA");
+                } else {
+                  setGstPaymentStatus("Pending");
+                }
+
+                // Update gstApplicable state for UI display
+                setGstApplicable(gstApplicable);
+              } else {
+                // No client selected - default to INR
+                setSelectedCurrency("INR");
+                setGstApplicable(true);
+                setGstPaymentStatus("Pending");
+              }
+
               setErrors((prev) => ({ ...prev, selectedClientId: "" }));
             }}
             placeholder={yourCompany ? "Select Client..." : "Select company first"}
@@ -601,17 +859,34 @@ export default function CreateInvoice() {
                 </div>
 
                 <div style={{ marginBottom: "15px" }}>
-                  <RequiredLabel>Service Amount ₹</RequiredLabel>
+                  <RequiredLabel>Service Amount ({CurrencyService.getCurrencySymbol(selectedCurrency)})</RequiredLabel>
                   <input
                     type="number"
-                    min="1"
+                    min={selectedCurrency === "INR" ? "1" : "0.01"}
                     step="any"
                     value={service.amount ?? ""}
                     onChange={(e) => {
                       const val = e.target.value;
-                      const updated = [...services];
-                      updated[idx].amount = val === "" ? "" : Math.max(1, Number(val));
-                      setServices(updated);
+
+                      // Sanitize the input value to remove malformed characters
+                      const sanitizedVal = CurrencyService.sanitizeAmount(val);
+                      const numVal = sanitizedVal === 0 ? "" : sanitizedVal;
+
+                      // For non-INR currencies, allow decimal values
+                      if (selectedCurrency !== "INR" && val !== "" && numVal !== "") {
+                        // Allow any positive number for international currencies
+                        if (numVal > 0) {
+                          const updated = [...services];
+                          updated[idx].amount = numVal;
+                          setServices(updated);
+                        }
+                      } else {
+                        // For INR, maintain minimum value of 1
+                        const updated = [...services];
+                        updated[idx].amount = val === "" ? "" : Math.max(1, numVal || 0);
+                        setServices(updated);
+                      }
+
                       setErrors((prev) => {
                         const next = { ...prev };
                         if (next.serviceRows[idx]?.amount) {
@@ -672,35 +947,270 @@ export default function CreateInvoice() {
             </select>
           </div>
 
+          {/* Currency Selection */}
+          <div style={{ marginBottom: "20px" }}>
+            <label style={{ fontWeight: "600" }}>Currency</label>
+            <Select
+              options={currencyOptions}
+              value={currencyOptions.find(opt => opt.value === selectedCurrency)}
+              onChange={(option) => {
+                const newCurrency = option?.value || "INR";
+                setSelectedCurrency(newCurrency);
+
+                // Enhanced GST logic: Apply GST for INR currency regardless of client country
+                const isINRSelected = newCurrency === 'INR';
+                const gstApplicable = isINRSelected; // GST applies when INR is selected
+
+                if (!gstApplicable) {
+                  setGstPaymentStatus("NA");
+                } else if (gstPaymentStatus === "NA") {
+                  setGstPaymentStatus("Pending");
+                }
+
+                // Update gstApplicable state for UI display
+                setGstApplicable(gstApplicable);
+              }}
+              styles={{
+                control: (base) => ({
+                  ...base,
+                  padding: "2px",
+                  borderRadius: "10px",
+                  border: "1px solid #ccc",
+                }),
+              }}
+              isSearchable={false}
+            />
+
+            {/* Rate Source Status */}
+            {(() => {
+              const rateInfo = CurrencyService.getRateSourceInfo();
+              return (
+                <div style={{
+                  marginTop: "8px",
+                  padding: "8px",
+                  background: rateInfo.usingLiveRates ? "#e8f5e8" : "#fff3e0",
+                  border: `1px solid ${rateInfo.usingLiveRates ? "#4caf50" : "#ff9800"}`,
+                  borderRadius: "4px",
+                  fontSize: "12px"
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{
+                      color: rateInfo.usingLiveRates ? "#2e7d32" : "#e65100",
+                      fontWeight: "bold"
+                    }}>
+                      {rateInfo.usingLiveRates ? "🟢 Live API Rates" : "🟡 Static Rates"}
+                    </span>
+                    <span style={{ color: "#666", fontSize: "11px" }}>
+                      Updated: {rateInfo.lastUpdated}
+                    </span>
+                  </div>
+                  {rateInfo.usingLiveRates && (
+                    <div style={{ fontSize: "11px", color: "#2e7d32", marginTop: "2px" }}>
+                      ✅ Using fresh rates from live API
+                    </div>
+                  )}
+                  {!rateInfo.usingLiveRates && (
+                    <div style={{ fontSize: "11px", color: "#e65100", marginTop: "2px" }}>
+                      ⚠️ Using static rates (API unavailable) - Click "Refresh" to retry
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+          </div>
+
           {/* GST Payment Status */}
           <div style={{ marginBottom: "20px" }}>
             <label style={{ fontWeight: "600" }}>GST Payment Status</label>
             <select
               value={gstPaymentStatus}
               onChange={(e) => setGstPaymentStatus(e.target.value)}
-              disabled={!(selectedClient && selectedClient.country === "India")}
-              style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px solid #ccc", background: !(selectedClient && selectedClient.country === "India") ? "#f3f4f6" : "#fff" }}
-              title={!(selectedClient && selectedClient.country === "India") ? "GST not applicable for this client" : ""}
+              disabled={!gstApplicable}
+              style={{
+                width: "100%",
+                padding: "10px",
+                borderRadius: "10px",
+                border: "1px solid #ccc",
+                background: !gstApplicable ? "#f3f4f6" : "#fff"
+              }}
+              title={!gstApplicable ? `GST not applicable for ${selectedCurrency} currency` : ""}
             >
               <option value="Pending">Pending</option>
               <option value="Paid">Paid</option>
               <option value="Partial">Partial</option>
+              <option value="NA">NA</option>
             </select>
-            {!(selectedClient && selectedClient.country === "India") && (
+            {!gstApplicable && (
               <small style={{ color: "#666" }}>
-                GST not applicable (international client) — saved as "NA".
+                GST not applicable ({selectedCurrency} currency) — saved as "NA".
+                {selectedCurrency === "INR" && selectedClient?.country && !selectedClient.country.toLowerCase().includes('india') && (
+                  <span style={{ color: "#d32f2f", fontWeight: "bold" }}>
+                    {" "}Note: INR selected for international client - 18% tax will apply.
+                  </span>
+                )}
               </small>
             )}
           </div>
 
-          {/* Totals — show only applicable GST lines */}
+          {/* Totals — show only applicable GST lines with currency info */}
           <div style={{ background: "#f9f9f9", padding: "20px", borderRadius: "8px", marginBottom: "20px" }}>
-            <p>Subtotal: ₹{formatAmount(subtotal)}</p>
-            {cgst > 0 && <p>CGST ({cgstRate}%): ₹{formatAmount(cgst)}</p>}
-            {sgst > 0 && <p>SGST ({sgstRate}%): ₹{formatAmount(sgst)}</p>}
-            {igst > 0 && <p>IGST ({igstRate}%): ₹{formatAmount(igst)}</p>}
-            <p><b>Total Tax:</b> ₹{formatAmount(tax_amount)}</p>
-            <p><b>Total Amount:</b> ₹{formatAmount(grand_total)}</p>
+            {isLoadingCurrency ? (
+              <div style={{ textAlign: "center", padding: "20px", color: "#666" }}>
+                <div style={{ width: "20px", height: "20px", border: "2px solid #2196f3", borderTop: "2px solid transparent", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 10px" }}></div>
+                Calculating amounts...
+              </div>
+            ) : currencyCalculations ? (
+              <>
+                <div style={{ marginBottom: "10px", fontSize: "14px", color: "#666" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <div>
+                      <strong>Currency:</strong> {CurrencyService.getCurrencyName(selectedCurrency)} ({CurrencyService.getCurrencySymbol(selectedCurrency)})
+                    </div>
+                    {selectedCurrency !== "INR" && (
+                      <div style={{ fontSize: "12px", color: "#888" }}>
+                        <strong>Rate:</strong> 1 {selectedCurrency} = {(() => {
+                          // Use cached rate if available, otherwise fallback to static
+                          const cachedRates = LiveExchangeRateService.cache.get('rates');
+                          return cachedRates && cachedRates[selectedCurrency] ? cachedRates[selectedCurrency] : (STATIC_EXCHANGE_RATES[selectedCurrency] || 1);
+                        })()} INR
+                      </div>
+                    )}
+                  </div>
+                  {selectedCurrency !== "INR" && currencyCalculations?.subtotalINR && (
+                    <div style={{ marginTop: "5px", fontSize: "12px", color: "#666" }}>
+                      <em>Subtotal in INR: ₹{currencyCalculations.subtotalINR.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</em>
+                    </div>
+                  )}
+                </div>
+                {/* Enhanced Currency Display Logic */}
+                {(() => {
+                  const gstCalc = currencyCalculations.gstCalculation;
+                  const isInternationalClient = selectedClient?.country && !selectedClient.country.toLowerCase().includes('india');
+                  const isINRSelected = selectedCurrency === 'INR';
+
+                  // For international clients using local currency - show amounts in their currency
+                  if (isInternationalClient && !isINRSelected) {
+                    // For international clients using local currency:
+                    // - The amounts entered are already in the client's local currency
+                    // - No GST applies since GST only applies to INR invoices
+                    // - Show amounts in local currency with INR equivalent
+
+                    const subtotalInLocalCurrency = currencyCalculations.subtotalInSelectedCurrency;
+                    const totalInLocalCurrency = subtotalInLocalCurrency; // No tax applies
+
+                    // Format amounts directly in the selected currency (they're already in the correct currency)
+                    const formatCurrencyAmount = (amount, currency) => {
+                      const symbol = CurrencyService.getCurrencySymbol(currency);
+                      return `${symbol}${Number(amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    };
+
+                    const formattedSubtotal = formatCurrencyAmount(subtotalInLocalCurrency, selectedCurrency);
+                    const formattedTotal = formatCurrencyAmount(totalInLocalCurrency, selectedCurrency);
+
+                    return (
+                      <>
+                        <p><strong>Subtotal ({CurrencyService.getCurrencyName(selectedCurrency)}):</strong> <span style={{ fontSize: "16px", fontWeight: "bold" }}>{formattedSubtotal}</span></p>
+                        <p style={{ fontSize: "12px", color: "#666", marginTop: "-5px" }}>
+                          <em>INR: ₹{currencyCalculations.subtotalINR.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</em>
+                        </p>
+
+                        <p style={{ fontSize: "12px", color: "#d32f2f", margin: "5px 0" }}>
+                          <em>No GST applicable for international clients using local currency</em>
+                        </p>
+
+                        <p><strong>Total Amount ({CurrencyService.getCurrencyName(selectedCurrency)}):</strong> <span style={{ fontSize: "18px", fontWeight: "bold", color: "#1E3A8A" }}>{formattedTotal}</span></p>
+                        <p style={{ fontSize: "12px", color: "#666", marginTop: "-5px" }}>
+                          <em>INR: ₹{currencyCalculations.subtotalINR.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</em>
+                        </p>
+                      </>
+                    );
+                  }
+
+                  // For international clients using INR - show 18% IGST
+                  if (isInternationalClient && isINRSelected) {
+                    return (
+                      <>
+                        <p><strong>Subtotal (INR):</strong> <span style={{ fontSize: "16px", fontWeight: "bold" }}>{formatPrimaryAmount(currencyCalculations.subtotalINR)}</span></p>
+
+                        <p><strong>IGST (18%):</strong> <span style={{ fontSize: "16px", fontWeight: "bold" }}>{formatPrimaryAmount(gstCalc.igstAmount)}</span></p>
+                        <p style={{ fontSize: "12px", color: "#d32f2f", marginTop: "-5px" }}>
+                          <em>International client - 18% tax applied</em>
+                        </p>
+
+                        <p><strong>Total Tax (INR):</strong> <span style={{ fontSize: "16px", fontWeight: "bold" }}>{formatPrimaryAmount(currencyCalculations.tax_amount)}</span></p>
+
+                        <p><strong>Total Amount (INR):</strong> <span style={{ fontSize: "18px", fontWeight: "bold", color: "#1E3A8A" }}>{formatPrimaryAmount(currencyCalculations.grand_total)}</span></p>
+                      </>
+                    );
+                  }
+
+                  // For Indian clients - show regular GST
+                  return (
+                    <>
+                      <p><strong>Subtotal ({isINRSelected ? 'INR' : CurrencyService.getCurrencyName(selectedCurrency)}):</strong> <span style={{ fontSize: "16px", fontWeight: "bold" }}>{formatPrimaryAmount(currencyCalculations.subtotalINR)}</span></p>
+                      {selectedCurrency !== "INR" && (
+                        <p style={{ fontSize: "12px", color: "#666", marginTop: "-5px" }}>
+                          <em>INR: ₹{currencyCalculations.subtotalINR.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</em>
+                        </p>
+                      )}
+
+                      {/* Regular GST Display */}
+                      {(() => {
+                        if (gstCalc.cgstAmount > 0 && gstCalc.sgstAmount > 0) {
+                          return (
+                            <>
+                              <p><strong>CGST ({gstCalc.cgstRate}%):</strong> <span style={{ fontSize: "16px", fontWeight: "bold" }}>{formatPrimaryAmount(gstCalc.cgstAmount)}</span></p>
+                              {selectedCurrency !== "INR" && (
+                                <p style={{ fontSize: "12px", color: "#666", marginTop: "-5px" }}>
+                                  <em>INR: ₹{gstCalc.cgstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</em>
+                                </p>
+                              )}
+                              <p><strong>SGST ({gstCalc.sgstRate}%):</strong> <span style={{ fontSize: "16px", fontWeight: "bold" }}>{formatPrimaryAmount(gstCalc.sgstAmount)}</span></p>
+                              {selectedCurrency !== "INR" && (
+                                <p style={{ fontSize: "12px", color: "#666", marginTop: "-5px" }}>
+                                  <em>INR: ₹{gstCalc.sgstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</em>
+                                </p>
+                              )}
+                            </>
+                          );
+                        } else if (gstCalc.igstAmount > 0) {
+                          return (
+                            <>
+                              <p><strong>IGST ({gstCalc.igstRate}%):</strong> <span style={{ fontSize: "16px", fontWeight: "bold" }}>{formatPrimaryAmount(gstCalc.igstAmount)}</span></p>
+                              {selectedCurrency !== "INR" && (
+                                <p style={{ fontSize: "12px", color: "#666", marginTop: "-5px" }}>
+                                  <em>INR: ₹{gstCalc.igstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</em>
+                                </p>
+                              )}
+                            </>
+                          );
+                        }
+                        return null;
+                      })()}
+
+                      <p><strong>Total Tax ({isINRSelected ? 'INR' : CurrencyService.getCurrencyName(selectedCurrency)}):</strong> <span style={{ fontSize: "16px", fontWeight: "bold" }}>{formatPrimaryAmount(currencyCalculations.tax_amount)}</span></p>
+                      {selectedCurrency !== "INR" && (
+                        <p style={{ fontSize: "12px", color: "#666", marginTop: "-5px" }}>
+                          <em>INR: ₹{currencyCalculations.tax_amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</em>
+                        </p>
+                      )}
+
+                      <p><strong>Total Amount ({isINRSelected ? 'INR' : CurrencyService.getCurrencyName(selectedCurrency)}):</strong> <span style={{ fontSize: "18px", fontWeight: "bold", color: "#1E3A8A" }}>{formatPrimaryAmount(currencyCalculations.grand_total)}</span></p>
+                      {selectedCurrency !== "INR" && (
+                        <p style={{ fontSize: "12px", color: "#666", marginTop: "-5px" }}>
+                          <em>INR: ₹{currencyCalculations.grand_total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</em>
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
+              </>
+            ) : (
+              <div style={{ textAlign: "center", padding: "20px", color: "#666" }}>
+                Add services to see calculations
+              </div>
+            )}
           </div>
 
           {/* Progress Box */}

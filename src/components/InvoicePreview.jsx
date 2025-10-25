@@ -1,16 +1,22 @@
-// src/components/InvoicePreview.jsx
+// src/pages/InvoicePreview.jsx
 import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { db } from "../firebase";
 import { doc, getDoc, collection, getDocs, query, where, limit } from "firebase/firestore";
 import jsPDF from "jspdf";
+import CurrencyService from "../utils/CurrencyService";
 
 export default function InvoicePreview() {
   const { id } = useParams();
   const navigate = useNavigate();
 
+  // All useState hooks must be at the top level - before any conditional logic
   const [invoice, setInvoice] = useState(null);
   const [client, setClient] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [formattedAmounts, setFormattedAmounts] = useState({});
+  const [formattingError, setFormattingError] = useState(null);
   const previewRef = useRef(null);
   const [searchParams] = useSearchParams();
   const autoDoneRef = useRef(false);
@@ -18,34 +24,96 @@ export default function InvoicePreview() {
   useEffect(() => {
     const fetchInvoice = async () => {
       try {
+        setLoading(true);
+        setError(null);
+
+        console.log('🔍 DEBUG: InvoicePreview - Starting to fetch invoice:', id);
+        console.log('🔍 DEBUG: InvoicePreview - Search params:', Object.fromEntries(searchParams));
+
+        if (!id) {
+          throw new Error('No invoice ID provided');
+        }
+
         const by = (searchParams.get('by') || '').toLowerCase();
         let invoiceData = null;
 
         if (by === 'invoice_id') {
+          console.log('🔍 DEBUG: InvoicePreview - Fetching by invoice_id:', id);
           const q = query(collection(db, 'invoices'), where('invoice_id', '==', id), limit(1));
           const invSnap = await getDocs(q);
+          console.log('🔍 DEBUG: InvoicePreview - Query result:', invSnap.size, 'documents');
+
           if (!invSnap.empty) {
             invoiceData = invSnap.docs[0].data();
+            console.log('✅ DEBUG: InvoicePreview - Found invoice data:', {
+              invoice_id: invoiceData.invoice_id,
+              client_id: invoiceData.client_id,
+              currency: invoiceData.currency
+            });
+          } else {
+            throw new Error(`No invoice found with invoice_id: ${id}`);
           }
         } else {
+          console.log('🔍 DEBUG: InvoicePreview - Fetching by document ID:', id);
           const invoiceRef = doc(db, 'invoices', id);
           const invoiceSnap = await getDoc(invoiceRef);
+          console.log('🔍 DEBUG: InvoicePreview - Document exists:', invoiceSnap.exists());
+
           if (invoiceSnap.exists()) {
             invoiceData = invoiceSnap.data();
+            console.log('✅ DEBUG: InvoicePreview - Found invoice data:', {
+              invoice_id: invoiceData.invoice_id,
+              client_id: invoiceData.client_id,
+              currency: invoiceData.currency
+            });
+          } else {
+            throw new Error(`No invoice document found with ID: ${id}`);
           }
         }
 
         if (invoiceData) {
+          console.log('🔍 DEBUG: InvoicePreview - Setting invoice state');
           setInvoice(invoiceData);
+
+          if (!invoiceData.client_id) {
+            throw new Error('Invoice missing client_id');
+          }
+
+          console.log('🔍 DEBUG: InvoicePreview - Fetching client data:', invoiceData.client_id);
           const clientRef = doc(db, 'clients', invoiceData.client_id);
           const clientSnap = await getDoc(clientRef);
-          if (clientSnap.exists()) setClient(clientSnap.data());
+
+          if (clientSnap.exists()) {
+            const clientData = clientSnap.data();
+            console.log('✅ DEBUG: InvoicePreview - Client data loaded:', {
+              client_name: clientData.client_name,
+              company_name: clientData.company_name
+            });
+            setClient(clientData);
+          } else {
+            throw new Error(`Client not found: ${invoiceData.client_id}`);
+          }
+        } else {
+          throw new Error('No invoice data available');
         }
+
+        console.log('✅ DEBUG: InvoicePreview - Data loading completed successfully');
       } catch (err) {
-        console.error('Error loading invoice:', err);
+        console.error('❌ DEBUG: InvoicePreview - Error loading invoice:', err);
+        console.error('❌ DEBUG: InvoicePreview - Error details:', {
+          message: err.message,
+          code: err.code,
+          stack: err.stack,
+          id,
+          searchParams: Object.fromEntries(searchParams)
+        });
+        setError(err.message);
+      } finally {
+        setLoading(false);
       }
     };
 
+    console.log('🔄 DEBUG: InvoicePreview - Component mounted, fetching invoice for ID:', id);
     fetchInvoice();
   }, [id, searchParams]);
 
@@ -75,27 +143,133 @@ export default function InvoicePreview() {
     })();
   }, [invoice, client, searchParams]);
 
+  useEffect(() => {
+    const formatAmounts = async () => {
+      try {
+        setFormattingError(null);
+
+        // Clear exchange rate cache to ensure fresh rates are used
+        if (CurrencyService.LiveExchangeRateService && typeof CurrencyService.LiveExchangeRateService.clearCache === 'function') {
+          CurrencyService.LiveExchangeRateService.clearCache();
+        }
+
+        if (!invoice || !client) {
+          console.log('🔍 DEBUG: InvoicePreview - No invoice or client data for formatting');
+          return;
+        }
+
+        console.log('🔍 DEBUG: InvoicePreview - Starting amount formatting');
+        const currency = invoice?.currency || "INR";
+        console.log('🔍 DEBUG: InvoicePreview - Formatting amounts for currency:', currency);
+
+        // Use the calculated values directly instead of variables that might not be initialized yet
+        const currentSubtotalINR = gstApplicable && invoice
+          ? (invoice?.subtotal_inr || invoice?.subtotal || subtotal)
+          : Number(invoice?.subtotal_inr || invoice?.subtotal || subtotal || 0);
+
+        const currentTotalINR = gstApplicable && invoice
+          ? (invoice?.total_amount_inr || invoice?.total_amount || currentSubtotalINR + gstCalculation.totalTax)
+          : currentSubtotalINR;
+
+        // Amount formatting based on invoice type
+        console.log('🔍 DEBUG: Amount formatting - showINRAmounts:', showINRAmounts, 'currency:', currency, 'totalINR:', totalINR, 'subtotalINR:', subtotalINR);
+
+        const amountsToFormat = [
+          { key: 'total', value: showINRAmounts ? currentTotalINR : totalINR },
+          { key: 'subtotal', value: showINRAmounts ? currentSubtotalINR : subtotalINR },
+          { key: 'cgst', value: gstCalculation.cgstAmount },
+          { key: 'sgst', value: gstCalculation.sgstAmount },
+          { key: 'igst', value: gstCalculation.igstAmount }
+        ];
+
+        console.log('🔍 DEBUG: amountsToFormat values:', amountsToFormat);
+        console.log('🔍 DEBUG: showINRAmounts:', showINRAmounts, 'totalINR:', totalINR, 'currentTotalINR:', currentTotalINR);
+        console.log('🔍 DEBUG: gstCalculation:', gstCalculation);
+
+        console.log('🔍 DEBUG: InvoicePreview - Amounts to format:', amountsToFormat.filter(a => a.value > 0));
+        console.log('🔍 DEBUG: InvoicePreview - Line items count:', lineItems.length);
+
+        const formatted = {};
+        for (const { key, value } of amountsToFormat) {
+          if (value > 0) {
+            try {
+              if (!showINRAmounts) {
+                // For client currency invoices, format in client currency
+                const currencyInfo = CurrencyService.getCurrencyInfo(currency);
+                formatted[key] = `${currencyInfo.symbol}${value.toLocaleString(currencyInfo.locale || 'en-US')}`;
+                console.log(`✅ DEBUG: InvoicePreview - Formatted ${key} (client currency): ${value} -> ${formatted[key]}`);
+              } else {
+                // For INR invoices, use normal INR formatting
+                formatted[key] = await CurrencyService.formatAmountForPDF(value, 'INR');
+                console.log(`✅ DEBUG: InvoicePreview - Formatted ${key} (INR): ${value} -> ${formatted[key]}`);
+              }
+            } catch (formatError) {
+              console.error(`❌ DEBUG: InvoicePreview - Error formatting ${key}:`, formatError);
+              if (!showINRAmounts) {
+                formatted[key] = `${CurrencyService.getCurrencySymbol(currency)}${value.toLocaleString('en-US')}`;
+              } else {
+                formatted[key] = `₹${value.toLocaleString('en-IN')}`;
+              }
+            }
+          }
+        }
+
+        console.log('✅ DEBUG: Final formatted amounts:', formatted);
+        console.log('🔍 DEBUG: isLocalCurrency:', isLocalCurrency, 'currency:', currency);
+
+        console.log('✅ DEBUG: Final formatted amounts:', formatted);
+        console.log('🔍 DEBUG: isLocalCurrency:', isLocalCurrency, 'currency:', currency);
+
+        console.log('✅ DEBUG: Final formatted amounts:', formatted);
+        console.log('🔍 DEBUG: isLocalCurrency:', isLocalCurrency, 'currency:', currency);
+
+        console.log('✅ DEBUG: Final formatted amounts:', formatted);
+        console.log('🔍 DEBUG: showINRAmounts:', showINRAmounts, 'currency:', currency);
+
+        console.log('✅ DEBUG: Final formatted amounts:', formatted);
+
+        // Format line items
+        for (let i = 0; i < lineItems.length; i++) {
+          try {
+            console.log(`🔍 DEBUG: InvoicePreview - Formatting item ${i}: amount=${lineItems[i].amount}, currency=${currency}`);
+
+            if (!showINRAmounts) {
+              // For client currency invoices, format in their currency
+              const currencyInfo = CurrencyService.getCurrencyInfo(currency);
+              formatted[`item_${i}`] = `${currencyInfo.symbol}${lineItems[i].amount.toLocaleString(currencyInfo.locale || 'en-US')}`;
+              console.log(`✅ DEBUG: InvoicePreview - Formatted item ${i} (client currency): ${lineItems[i].amount} -> ${formatted[`item_${i}`]}`);
+            } else {
+              // For INR invoices, use INR formatting
+              formatted[`item_${i}`] = `₹${lineItems[i].amount.toLocaleString('en-IN')}`;
+              console.log(`✅ DEBUG: InvoicePreview - Formatted item ${i} (INR): ${lineItems[i].amount} -> ${formatted[`item_${i}`]}`);
+            }
+          } catch (formatError) {
+            console.error(`❌ DEBUG: InvoicePreview - Error formatting item ${i}:`, formatError);
+            if (!showINRAmounts) {
+              formatted[`item_${i}`] = `${CurrencyService.getCurrencySymbol(currency)}${lineItems[i].amount.toLocaleString('en-US')}`;
+            } else {
+              formatted[`item_${i}`] = `₹${lineItems[i].amount.toLocaleString('en-IN')}`;
+            }
+          }
+        }
+
+        console.log('✅ DEBUG: InvoicePreview - Amount formatting completed:', Object.keys(formatted).length, 'items');
+        console.log('🔍 DEBUG: Formatted amounts:', formatted);
+        setFormattedAmounts(formatted);
+      } catch (error) {
+        console.error('❌ DEBUG: InvoicePreview - Error in formatAmounts:', error);
+        setFormattingError(error.message);
+      }
+    };
+
+    formatAmounts();
+  }, [invoice, client]);
+
   const handleEdit = () => {
     navigate(`/dashboard/edit-invoice/${id}`);
   };
 
-  // NEW: back handler to All Invoices
-  const handleBack = () => {
-    navigate("/dashboard/all-invoices");
-  };
 
-  const testModuleImport = async () => {
-    try {
-      console.log('🧪 Testing module import...');
-      const { testModuleLoading } = await import('../utils/generateInvoicePDF');
-      const result = testModuleLoading();
-      console.log('✅ Module test result:', result);
-      alert('Module loaded successfully! Check console for details.');
-    } catch (error) {
-      console.error('❌ Module import test failed:', error);
-      alert('Module import failed! Check console for error details.');
-    }
-  };
 
   const handleDownloadTax = async () => {
     if (!invoice || !client) {
@@ -105,9 +279,15 @@ export default function InvoicePreview() {
 
     try {
       console.log('🔄 Attempting to import generateInvoicePDF module...');
+
+      // Import the PDF generation utility
       const { generateInvoicePDF } = await import('../utils/generateInvoicePDF');
+
       console.log('✅ Module imported successfully:', typeof generateInvoicePDF);
+
+      // Generate PDF using the dedicated utility
       const pdfDoc = await generateInvoicePDF(invoice, client);
+
       const timestamp = new Date().getTime();
       pdfDoc.save(`${invoice.invoice_id}_TAX_${timestamp}.pdf`);
     } catch (error) {
@@ -119,6 +299,7 @@ export default function InvoicePreview() {
         client_name: client?.client_name
       });
 
+      // Provide user-friendly error message with guidance
       let userMessage = 'Error generating Tax Invoice PDF. ';
       if (error.message.includes('font')) {
         userMessage += 'Font loading issue - check if Calibri font is available. ';
@@ -130,6 +311,7 @@ export default function InvoicePreview() {
         userMessage += 'Unknown error occurred. ';
       }
       userMessage += 'See browser console (F12) for detailed technical information.';
+
       alert(userMessage);
     }
   };
@@ -142,9 +324,15 @@ export default function InvoicePreview() {
 
     try {
       console.log('🔄 Attempting to import generateProformaInvoicePDF module...');
+
+      // Import the PDF generation utility
       const { generateProformaInvoicePDF } = await import('../utils/generateProformaInvoicePDF');
+
       console.log('✅ Proforma module imported successfully:', typeof generateProformaInvoicePDF);
+
+      // Generate PDF using the dedicated utility
       const pdfDoc = await generateProformaInvoicePDF(invoice, client);
+
       const timestamp = new Date().getTime();
       pdfDoc.save(`${invoice.invoice_id}_PROFORMA_${timestamp}.pdf`);
     } catch (error) {
@@ -156,6 +344,7 @@ export default function InvoicePreview() {
         client_name: client?.client_name
       });
 
+      // Provide user-friendly error message with guidance
       let userMessage = 'Error generating Proforma Invoice PDF. ';
       if (error.message.includes('font')) {
         userMessage += 'Font loading issue - check if Calibri font is available. ';
@@ -167,6 +356,7 @@ export default function InvoicePreview() {
         userMessage += 'Unknown error occurred. ';
       }
       userMessage += 'See browser console (F12) for detailed technical information.';
+
       alert(userMessage);
     }
   };
@@ -174,11 +364,18 @@ export default function InvoicePreview() {
   const handleDebugPDF = async () => {
     try {
       console.log('🔧 Starting debug PDF generation...');
+
+      // Import the debug function
       const { debugPDFGeneration } = await import('../utils/generateInvoicePDF');
+
       console.log('✅ Debug function imported successfully');
+
+      // Generate debug PDF
       const result = await debugPDFGeneration();
+
       console.log('Debug result:', result);
       alert('Debug PDF generation completed! Check console for details and downloads folder for the PDF file.');
+
     } catch (error) {
       console.error('❌ Debug PDF generation failed:', error);
       alert(`Debug PDF generation failed: ${error.message}`);
@@ -194,10 +391,31 @@ export default function InvoicePreview() {
     return `${dd} ${month} ${yyyy}`;
   };
 
-  // ---------- Indian-numbering converter (Rupees & Paise) ----------
+
+  // ---------- Multi-currency number to words converter ----------
+  function numberToWords(amountInput, currencyCode = 'INR') {
+    const amount = Number(amountInput ?? 0);
+    console.log('🔍 DEBUG: numberToWords input - amount:', amountInput, 'parsed:', amount, 'currency:', currencyCode);
+    if (!isFinite(amount)) {
+      console.log('❌ DEBUG: Invalid amount for words conversion:', amountInput);
+      return "";
+    }
+
+    // Handle different currencies
+    if (currencyCode === 'INR') {
+      console.log('🔍 DEBUG: Using INR words function for INR currency');
+      return numberToWordsINR(amount);
+    } else {
+      console.log('🔍 DEBUG: Using English words function for currency:', currencyCode, 'amount:', amount);
+      return numberToWordsEnglish(amount, currencyCode);
+    }
+  }
+
   function numberToWordsINR(amountInput) {
     const amount = Number(amountInput ?? 0);
     if (!isFinite(amount)) return "";
+
+    // use paise to avoid floating point issues
     const totalPaise = Math.round(amount * 100);
     const rupees = Math.floor(totalPaise / 100);
     const paise = totalPaise % 100;
@@ -229,10 +447,11 @@ export default function InvoicePreview() {
     const segmentWords = (n) => {
       if (n === 0) return "Zero";
       let out = "";
-      const crore = Math.floor(n / 10000000);
-      const lakh = Math.floor((n % 10000000) / 100000);
-      const thousand = Math.floor((n % 100000) / 1000);
-      const hundred = n % 1000;
+
+      const crore = Math.floor(n / 10000000);                 // 1,00,00,000
+      const lakh = Math.floor((n % 10000000) / 100000);       // 1,00,000
+      const thousand = Math.floor((n % 100000) / 1000);       // 1,000
+      const hundred = n % 1000;                               // 0..999
 
       if (crore)   out += `${threeDigitWords(crore)} Crore`;
       if (lakh)    out += `${out ? " " : ""}${threeDigitWords(lakh)} Lakh`;
@@ -242,93 +461,276 @@ export default function InvoicePreview() {
       return out.trim();
     };
 
-    const rupeesWords = `${segmentWords(rupees)} Rupees`;
-    const paiseWords = paise ? ` and ${twoDigitWords(paise)} Paise` : "";
+    const rupeesWords = rupees > 0 ? `${segmentWords(rupees)} Rupees` : "Zero Rupees";
+    const paiseWords = paise > 0 ? ` and ${twoDigitWords(paise)} Paise` : "";
     return `${rupeesWords}${paiseWords} only`;
   }
-  // -----------------------------------------------------------------
 
-  if (!invoice || !client) {
+  function numberToWordsEnglish(amountInput, currencyCode) {
+    const amount = Number(amountInput ?? 0);
+    console.log('🔍 DEBUG: numberToWordsEnglish - input:', amountInput, 'parsed:', amount, 'currency:', currencyCode);
+    if (!isFinite(amount)) {
+      console.log('❌ DEBUG: Invalid amount for English words:', amountInput);
+      return "";
+    }
+
+    // Round to 2 decimal places for currency
+    const roundedAmount = Math.round(amount * 100) / 100;
+    const integerPart = Math.floor(roundedAmount);
+    const decimalPart = Math.round((roundedAmount - integerPart) * 100);
+
+    const ones = [
+      "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+      "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen",
+      "Sixteen", "Seventeen", "Eighteen", "Nineteen"
+    ];
+    const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+    const twoDigitWords = (n) => {
+      if (n === 0) return "";
+      if (n < 20) return ones[n];
+      const t = Math.floor(n / 10);
+      const o = n % 10;
+      return `${tens[t]}${o ? " " + ones[o] : ""}`.trim();
+    };
+
+    const threeDigitWords = (n) => {
+      if (n === 0) return "";
+      const h = Math.floor(n / 100);
+      const rem = n % 100;
+      let out = "";
+      if (h) out += `${ones[h]} Hundred`;
+      if (rem) out += `${out ? " " : ""}${twoDigitWords(rem)}`;
+      return out.trim();
+    };
+
+    const integerWords = integerPart > 0 ? threeDigitWords(integerPart) : "Zero";
+    const decimalWords = decimalPart > 0 ? ` Point ${twoDigitWords(decimalPart)}` : "";
+
+    const currencyName = CurrencyService.getCurrencyName(currencyCode);
+    const currencySymbol = CurrencyService.getCurrencySymbol(currencyCode);
+
+    const result = `${integerWords}${decimalWords} ${currencyName} only`;
+    console.log('✅ DEBUG: English words result:', result, 'currencyName:', currencyName, 'currencySymbol:', currencySymbol);
+    return result;
+  }
+  // ---------------------------------------------------------------------------
+
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f3f4f6] text-[#3b5999] text-xl">
-        Loading invoice...
+      <div className="min-h-screen flex items-center justify-center bg-[#f3f4f6]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#3b5999] mx-auto mb-4"></div>
+          <div className="text-[#3b5999] text-xl font-semibold mb-2">
+            Loading invoice details...
+          </div>
+          <div className="text-gray-600 text-sm">
+            {id ? `Invoice ID: ${id}` : 'No invoice ID provided'}
+          </div>
+        </div>
       </div>
     );
   }
 
-  // Company visuals
-  const type = String(invoice.invoice_type || '').trim().toUpperCase();
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#f3f4f6]">
+        <div className="text-center max-w-md mx-auto p-6 bg-white rounded-lg shadow-lg">
+          <div className="text-red-500 text-6xl mb-4">⚠️</div>
+          <div className="text-red-700 text-xl font-semibold mb-2">
+            Error Loading Invoice
+          </div>
+          <div className="text-gray-600 text-sm mb-4">
+            {error}
+          </div>
+          <div className="text-gray-500 text-xs">
+            Invoice ID: {id || 'Not provided'}
+          </div>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-[#3b5999] text-white rounded hover:bg-[#2d4373] text-sm"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!invoice || !client) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#f3f4f6]">
+        <div className="text-center max-w-md mx-auto p-6 bg-white rounded-lg shadow-lg">
+          <div className="text-yellow-500 text-6xl mb-4">📄</div>
+          <div className="text-yellow-700 text-xl font-semibold mb-2">
+            Invoice Data Missing
+          </div>
+          <div className="text-gray-600 text-sm mb-4">
+            The invoice or client data could not be loaded properly.
+          </div>
+          <div className="text-gray-500 text-xs">
+            Please check the console for technical details.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Company visuals (robust brand detection) - only calculate when invoice exists
+  const type = invoice ? String(invoice.invoice_type || '').trim().toUpperCase() : '';
   const isWTX = type === "WTX" || type === "WTXPL" || type.includes("WTX");
-  const isWT = !isWTX;
+  const isWT = !isWTX; // default to WT when unknown
   const headingColor = isWTX ? "#ffde58" : "#3b5998";
   const logoPath = isWTX ? "/wtx_logo.png" : "/wt-logo.png";
 
-  // Amounts & formatting
-  const fmt2 = (n) =>
-    Number(n || 0).toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+  // Calculations - only perform when invoice exists
+  const subtotal = invoice ? Number(invoice.subtotal) || 0 : 0;
+  const total = invoice ? Number(invoice.total_amount) || subtotal : 0;
 
-  const subtotal = Number(invoice.subtotal) || 0;
-  const total = Number(invoice.total_amount) || subtotal;
+  // ======== INTERNATIONAL INVOICE LOGIC ========
+  let currency = invoice?.currency || "INR";
+  const isIndianClient = client?.country && client.country.toLowerCase().includes('india');
 
-  // Tax visibility
-  const toLower = (s) => (s || "").toString().trim().toLowerCase();
-  const clientCountry = toLower(client.country);
-  const clientState = toLower(client.state);
-  const isIndian = clientCountry === "india";
-  const isTelangana = clientState === "telangana";
+  // For international clients, determine if they want INR or local currency
+  const isInternationalClient = client?.country && !client.country.toLowerCase().includes('india');
+  const clientLocalCurrency = isInternationalClient ? CurrencyService.getDefaultCurrencyForClient(client) : 'INR';
 
-  let cgstRate = 0, sgstRate = 0, igstRate = 0;
-  if (isIndian && isTelangana) {
-    cgstRate = 9; sgstRate = 9; igstRate = 0;
-  } else if (isIndian && !isTelangana) {
-    cgstRate = 0; sgstRate = 0; igstRate = 18;
+  // Determine invoice type based on business requirements
+  const isInternationalInvoice = currency === 'INR' && isInternationalClient; // International clients requesting INR invoice (show INR + local currency)
+  const isClientCurrencyInvoice = currency !== 'INR' && isInternationalClient; // International clients requesting their own currency (show only local currency)
+
+  console.log('🔍 DEBUG: InvoicePreview - Invoice Type Analysis:', {
+    currency,
+    isIndianClient,
+    isInternationalInvoice,
+    isClientCurrencyInvoice,
+    clientCountry: client?.country
+  });
+
+  // Tax calculation based on invoice type (not just client country)
+  let gstCalculation = { cgstAmount: 0, sgstAmount: 0, igstAmount: 0, totalTax: 0, totalAmount: 0, taxType: 'none' };
+
+  if (isInternationalInvoice) {
+    // International Invoice (INR format) - Apply 18% GST
+    console.log('🔍 DEBUG: InvoicePreview - Processing International Invoice (INR format)');
+    const subtotalINR = invoice?.subtotal_inr || invoice?.subtotal || subtotal;
+    const gstRate = 18;
+    const gstAmount = (subtotalINR * gstRate) / 100;
+
+    gstCalculation = {
+      cgstAmount: 0,
+      sgstAmount: 0,
+      igstAmount: gstAmount,
+      totalTax: gstAmount,
+      totalAmount: subtotalINR + gstAmount,
+      taxType: 'international',
+      gstRate: gstRate
+    };
+  } else if (isClientCurrencyInvoice) {
+    // Client's own currency invoice - NO GST
+    console.log('🔍 DEBUG: InvoicePreview - Processing Client Currency Invoice (no GST)');
+    const subtotalOriginal = invoice?.subtotal || subtotal;
+
+    gstCalculation = {
+      cgstAmount: 0,
+      sgstAmount: 0,
+      igstAmount: 0,
+      totalTax: 0,
+      totalAmount: subtotalOriginal,
+      taxType: 'none'
+    };
   } else {
-    cgstRate = 0; sgstRate = 0; igstRate = 0;
+    // Indian client or INR invoice - use existing GST logic
+    console.log('🔍 DEBUG: InvoicePreview - Processing Indian client or INR invoice');
+    const subtotalINR = invoice?.subtotal_inr || invoice?.subtotal || subtotal;
+    const calculatedGST = CurrencyService.calculateGST(subtotalINR, client?.state, client);
+    gstCalculation = { ...calculatedGST };
   }
 
-  const storedCGST = Number(invoice.cgst ?? 0);
-  const storedSGST = Number(invoice.sgst ?? 0);
-  const storedIGST = Number(invoice.igst ?? 0);
+  console.log('🔍 DEBUG: InvoicePreview - Final GST calculation:', gstCalculation);
 
-  const cgstAmount = storedCGST || +(subtotal * (cgstRate / 100)).toFixed(2);
-  const sgstAmount = storedSGST || +(subtotal * (sgstRate / 100)).toFixed(2);
-  const igstAmount = storedIGST || +(subtotal * (igstRate / 100)).toFixed(2);
-  const summaryRowCount = 1 + (isIndian && isTelangana ? 2 : 1) + 1;
+  // Tax calculation already handled above based on invoice type
 
-  // Services normalization
-  const lineItems = Array.isArray(invoice.services) && invoice.services.length
-    ? invoice.services.map((s, i) => {
+   // Handle amounts based on invoice type (business requirements)
+    let subtotalINR, totalINR;
+    let displayCurrency = currency; // Currency to show on invoice
+    let showINRAmounts = true; // Whether to show INR amounts and exchange rates
+
+    if (isInternationalInvoice) {
+      // International Invoice (INR format) - Show ONLY INR amounts and GST (no dual currency)
+      subtotalINR = invoice?.subtotal_inr || invoice?.subtotal || subtotal;
+      totalINR = gstCalculation.totalAmount || subtotalINR;
+      displayCurrency = 'INR';
+      showINRAmounts = true;
+      console.log('🔍 DEBUG: InvoicePreview - International Invoice (INR only) - Subtotal:', subtotalINR, 'Total:', totalINR);
+    } else if (isClientCurrencyInvoice) {
+      // Client's own currency invoice - Show only client currency, no INR
+      subtotalINR = invoice?.subtotal || subtotal;
+      totalINR = gstCalculation.totalAmount || subtotalINR;
+      displayCurrency = currency;
+      showINRAmounts = false; // Don't show INR amounts or exchange rates
+      console.log('🔍 DEBUG: InvoicePreview - Client Currency Invoice - Subtotal:', subtotalINR, 'Total:', totalINR, 'Currency:', currency);
+    } else {
+      // Indian client or INR invoice - Show INR amounts
+      subtotalINR = invoice?.subtotal_inr || invoice?.subtotal || subtotal;
+      totalINR = gstCalculation.totalAmount || subtotalINR;
+      displayCurrency = 'INR';
+      showINRAmounts = true;
+      console.log('🔍 DEBUG: InvoicePreview - Indian Client/INR - Subtotal:', subtotalINR, 'Total:', totalINR);
+    }
+
+  // Calculate summary row count based on new tax logic
+  let summaryRowCount = 1; // Base subtotal row
+  if (gstCalculation.totalTax > 0) {
+    if (gstCalculation.cgstAmount > 0) summaryRowCount++;
+    if (gstCalculation.sgstAmount > 0) summaryRowCount++;
+    if (gstCalculation.igstAmount > 0) summaryRowCount++;
+  } else if (gstCalculation.taxType === 'none' && !isClientCurrencyInvoice) {
+    summaryRowCount++; // GST row showing "NA"
+  }
+  summaryRowCount++; // Total row
+  summaryRowCount++; // Amount in words row
+
+  // ======== SERVICES NORMALIZATION (multi-currency support) ========
+  let lineItems = [];
+  if (invoice) {
+    if (Array.isArray(invoice.services) && invoice.services.length) {
+      lineItems = invoice.services.map((s, i) => {
         const nameStr = Array.isArray(s?.name) ? s.name.filter(Boolean).join(", ") : (s?.name || `Service ${i + 1}`);
+
+        // Handle amounts based on invoice type
+        let amount;
+        if (!showINRAmounts) {
+          // For client currency invoices, use original amounts
+          amount = Number(s?.amount || 0);
+        } else {
+          // For INR invoices, use INR amounts
+          amount = Number(invoice?.subtotal_inr || s?.amount || 0);
+        }
+
         return {
           name: String(nameStr),
           description: String(s?.description || ""),
-          amount: Number(s?.amount || 0),
+          amount: amount,
         };
-      })
-    : [
+      });
+    } else {
+      lineItems = [
         {
           name: String(invoice.invoice_title || invoice.service_name || "Service"),
           description: String(invoice.service_description || ""),
-          amount: Number(invoice.subtotal || 0),
+          amount: !showINRAmounts
+            ? Number(invoice?.subtotal || 0) // Use original amount for client currency
+            : Number(invoice?.subtotal_inr || invoice?.subtotal || 0), // Use INR for others
         },
       ];
+    }
+  }
 
   return (
     <div className="bg-gray-100 font-sans text-[13px] text-gray-900 preview" style={{ margin: '0 auto', padding: '0' }}>
       {/* actions */}
       <div className="bg-white border-b border-gray-200 px-4 py-3 flex gap-2 justify-center" style={{ margin: '0', padding: '12px 24px' }}>
-        {/* NEW Back button */}
-        <button
-          onClick={handleBack}
-          className="bg-[#3b5999] text-[#ffffff] px-4 py-2 rounded  text-sm"
-          title="Back to All Invoices"
-        >
-          ← Back to All Invoices
-        </button>
-
         <button
           onClick={handleEdit}
           className="bg-[#3b5999] text-[#ffffff] px-4 py-2 rounded hover:bg-[#2d4373] text-sm"
@@ -341,6 +743,7 @@ export default function InvoicePreview() {
         >
           Download Tax Invoice PDF
         </button>
+
       </div>
 
       <div className="flex justify-center items-start bg-gray-100" style={{
@@ -379,28 +782,20 @@ export default function InvoicePreview() {
            </div>
         </div>
 
-        {/* Heading */}
+        {/* Heading - Enhanced styling with consistent format */}
         <h1 className="text-xl mb-4" style={{ color: headingColor, fontSize: '20px', marginBottom: '10px', marginTop: '0px', fontFamily: 'Calibri, sans-serif', fontWeight: 'normal' }}>
            Tax Invoice
         </h1>
 
-        {/* 1) Top info table — equal columns */}
-        <table
-          className="w-full border-collapse mb-3"
-          style={{
-            marginBottom: '8px',
-            border: '1px solid #cccccc',
-            backgroundColor: '#ffffff',
-            fontFamily: 'Calibri, sans-serif',
-            fontSize: '9px',
-            tableLayout: 'fixed',
-            width: '100%'
-          }}
-        >
-          <colgroup>
-            <col style={{ width: '50%' }} />
-            <col style={{ width: '50%' }} />
-          </colgroup>
+        
+        {/* Top info table */}
+        <table className="w-full border-collapse mb-3" style={{
+          marginBottom: '8px',
+          border: '1px solid #cccccc',
+          backgroundColor: '#ffffff',
+          fontFamily: 'Calibri, sans-serif',
+          fontSize: '9px'
+        }}>
           <tbody>
             <tr style={{ border: '1px solid #cccccc' }}>
               <td className="p-1 text-[8px] text-left" style={{
@@ -421,8 +816,7 @@ export default function InvoicePreview() {
                 backgroundColor: '#ffffff',
                 verticalAlign: 'top'
               }}>
-                <span style={{fontWeight: '600'}}>GST IN:</span>{" "}
-                <span style={{fontWeight: 'normal'}}>{isWT ? "36AACFW6827B1Z8" : "36AAACW8991C1Z9"}</span>
+                <span style={{fontWeight: '600'}}>GST IN:</span> <span style={{fontWeight: 'normal'}}>{isWT ? "36AACFW6827B1Z8" : "36AAACW8991C1Z9"}</span>
               </td>
             </tr>
             <tr style={{ border: '1px solid #cccccc' }}>
@@ -436,8 +830,7 @@ export default function InvoicePreview() {
                 fontFamily: 'Calibri, sans-serif'
               }}>
                 <div style={{textAlign: 'left', width: '100%'}}>
-                  <span style={{fontWeight: '600'}}>Invoice Number:</span>{" "}
-                  <span style={{fontWeight: 'normal'}}>{invoice.invoice_id}</span>
+                  <span style={{fontWeight: '600'}}>Invoice Number:</span> <span style={{fontWeight: 'normal'}}>{invoice.invoice_id}</span>
                 </div>
               </td>
               <td className="p-1 text-[6px] text-left" style={{
@@ -470,8 +863,7 @@ export default function InvoicePreview() {
                 verticalAlign: 'top'
               }}>
                 <div style={{textAlign: 'left', width: '100%'}}>
-                  <span style={{fontWeight: '600'}}>Invoice Title:</span>{" "}
-                  <span style={{fontWeight: 'normal'}}>{invoice.invoice_title || lineItems[0]?.name}</span>
+                  <span style={{fontWeight: '600'}}>Invoice Title:</span> <span style={{fontWeight: 'normal'}}>{invoice.invoice_title || lineItems[0]?.name}</span>
                 </div>
               </td>
               <td className="p-1 font-semibold text-[6px] text-left" style={{
@@ -484,31 +876,91 @@ export default function InvoicePreview() {
                 verticalAlign: 'top'
               }}>
                 <div style={{textAlign: 'left', width: '100%'}}>
-                  <span style={{fontWeight: '600'}}>Total Cost:</span>{" "}
-                  <span style={{fontWeight: 'normal'}}>INR {fmt2(total)}</span>
+                  <span style={{fontWeight: '600'}}>Total Cost:</span> <span style={{fontWeight: 'normal'}}>
+                    {(() => {
+                      console.log('🔍 DEBUG: Total Cost Display:', {
+                        showINRAmounts,
+                        formattedAmounts,
+                        totalINR,
+                        currency,
+                        isClientCurrencyInvoice
+                      });
+
+                      if (formattedAmounts.total) {
+                        console.log('✅ DEBUG: Using formatted amount:', formattedAmounts.total);
+                        return formattedAmounts.total;
+                      } else {
+                        // Fallback formatting with INR prefix for INR amounts
+                        const fallbackAmount = showINRAmounts ? totalINR : totalINR;
+                        if (showINRAmounts) {
+                          const formattedFallback = `INR ${fallbackAmount.toLocaleString('en-IN')}`;
+                          console.log('⚠️ DEBUG: Using INR fallback formatting:', formattedFallback);
+                          return formattedFallback;
+                        } else {
+                          const fallbackSymbol = CurrencyService.getCurrencySymbol(currency);
+                          const formattedFallback = `${fallbackSymbol}${fallbackAmount.toLocaleString('en-US')}`;
+                          console.log('⚠️ DEBUG: Using fallback formatting:', formattedFallback);
+                          return formattedFallback;
+                        }
+                      }
+                    })()}
+                  </span>
                 </div>
               </td>
             </tr>
+            {/* Currency Information - Add as table rows to match PDF layout exactly */}
+            {(() => {
+              console.log('🔍 DEBUG: Adding currency info to meta table:', {
+                currency,
+                shouldShow: currency !== "INR",
+                currencyName: CurrencyService.getCurrencyName(currency),
+                currencySymbol: CurrencyService.getCurrencySymbol(currency),
+                exchangeRate: invoice?.exchange_rate
+              });
+
+              // Show currency info only for non-INR currencies (not for international clients selecting INR)
+              return currency !== "INR" && (
+                <tr style={{ border: '1px solid #cccccc' }}>
+                  <td className="p-1 text-[6px] text-left" style={{
+                    padding: '3px 6px',
+                    fontSize: '8px',
+                    border: '1px solid #cccccc',
+                    textAlign: 'left',
+                    backgroundColor: '#ffffff',
+                    verticalAlign: 'top'
+                  }}>
+                    <div style={{textAlign: 'left', width: '100%'}}>
+                      <span style={{fontWeight: '600'}}>Currency:</span> <span style={{fontWeight: 'normal'}}>{CurrencyService.getCurrencyName(currency)} ({CurrencyService.getCurrencySymbol(currency)})</span>
+                    </div>
+                  </td>
+                  <td className="p-1 text-[6px] text-left" style={{
+                    padding: '3px 6px',
+                    fontSize: '8px',
+                    border: '1px solid #cccccc',
+                    textAlign: 'left',
+                    backgroundColor: '#ffffff',
+                    verticalAlign: 'top'
+                  }}>
+                    <div style={{textAlign: 'left', width: '100%'}}>
+                      <span style={{fontWeight: '600'}}>Exchange Rate:</span> <span style={{fontWeight: 'normal'}}>1 {currency} = {invoice?.exchange_rate || '1.0'} INR</span>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })()}
           </tbody>
         </table>
 
-        {/* 2) Customer block — equal columns */}
-        <table
-          className="w-full border-collapse mb-3"
-          style={{
-            marginBottom: '8px',
-            border: '1px solid #cccccc',
-            backgroundColor: '#ffffff',
-            fontFamily: 'Calibri, sans-serif',
-            fontSize: '9px',
-            tableLayout: 'fixed',
-            width: '100%'
-          }}
-        >
-          <colgroup>
-            <col style={{ width: '50%' }} />
-            <col style={{ width: '50%' }} />
-          </colgroup>
+
+
+        {/* Customer block */}
+        <table className="w-full border-collapse mb-3" style={{
+          marginBottom: '8px',
+          border: '1px solid #cccccc',
+          backgroundColor: '#ffffff',
+          fontFamily: 'Calibri, sans-serif',
+          fontSize: '9px'
+        }}>
           <tbody>
             <tr style={{ border: '1px solid #cccccc' }}>
               <td className="p-1 text-[6px] text-left" style={{
@@ -521,8 +973,7 @@ export default function InvoicePreview() {
                 lineHeight: '1.2'
               }}>
                 <div style={{textAlign: 'left', width: '100%', margin: '0', padding: '0'}}>
-                  <span style={{fontWeight: '600'}}>Customer Name:</span>{" "}
-                  <span style={{fontWeight: 'normal'}}>{client.client_name}</span>
+                  <span style={{fontWeight: '600'}}>Customer Name:</span> <span style={{fontWeight: 'normal'}}>{client.client_name}</span>
                 </div>
               </td>
               <td className="p-1 text-[6px] text-left" rowSpan={2} style={{
@@ -555,8 +1006,7 @@ export default function InvoicePreview() {
                   margin: '0',
                   padding: '0'
                 }}>
-                  <span style={{fontWeight:'bold'}}>Customer GST IN:</span>{" "}
-                  {(client.gst_number || "").trim() || "NA"}
+                  <span style={{fontWeight:'bold'}}>Customer GST IN:</span> {(client.gst_number || "").trim() || "NA"}
                 </div>
               </td>
             </tr>
@@ -597,12 +1047,12 @@ export default function InvoicePreview() {
               <th className="p-1 text-[6px] text-center font-bold" style={{
                 padding: '3px 6px',
                 fontSize: '8px',
-                border: '1px solid #cccccc', // ← fixed
+                border: '1px solid #cccccc',
                 fontWeight: 'bold',
                 textAlign: 'center',
                 backgroundColor: '#ffffff',
                 color: '#000000'
-              }}>Amount (INR)</th>
+              }}>Amount ({showINRAmounts ? 'INR' : currency})</th>
             </tr>
           </thead>
           <tbody>
@@ -636,20 +1086,47 @@ export default function InvoicePreview() {
                   textAlign: 'center',
                   backgroundColor: '#ffffff',
                   whiteSpace: 'nowrap'
-                }}>{fmt2(it.amount)}</td>
+                }}>
+                  {(() => {
+                    console.log(`🔍 DEBUG: Line item ${idx} formatting:`, {
+                      showINRAmounts,
+                      formattedAmounts,
+                      itemAmount: it.amount,
+                      currency,
+                      formattingError
+                    });
+
+                    if (formattedAmounts[`item_${idx}`]) {
+                      console.log(`✅ DEBUG: Using formatted amount for item ${idx}:`, formattedAmounts[`item_${idx}`]);
+                      return formattedAmounts[`item_${idx}`];
+                    } else if (formattingError) {
+                      const fallbackSymbol = !showINRAmounts ? CurrencyService.getCurrencySymbol(currency) : '₹';
+                      const fallbackAmount = `${fallbackSymbol}${it.amount.toLocaleString(!showINRAmounts ? 'en-US' : 'en-IN')}`;
+                      console.log(`⚠️ DEBUG: Using fallback for item ${idx}:`, fallbackAmount);
+                      return fallbackAmount;
+                    } else {
+                      console.log(`⏳ DEBUG: Still loading item ${idx}...`);
+                      return 'Loading...';
+                    }
+                  })()}
+                </td>
               </tr>
             ))}
 
-            {/* Summary with rowSpan on first two columns */}
+            {/* Summary with proper alignment - Gross row */}
             <tr style={{ border: '1px solid #cccccc' }}>
-              <td rowSpan={summaryRowCount} style={{
-                padding: '0',
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
                 border: '1px solid #cccccc',
+                textAlign: 'center',
                 backgroundColor: '#ffffff'
               }}></td>
-              <td rowSpan={summaryRowCount} style={{
-                padding: '0',
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
                 border: '1px solid #cccccc',
+                textAlign: 'center',
                 backgroundColor: '#ffffff'
               }}></td>
               <td className="p-1 text-[6px] text-center" style={{
@@ -666,67 +1143,241 @@ export default function InvoicePreview() {
                 textAlign: 'center',
                 backgroundColor: '#ffffff',
                 whiteSpace: 'nowrap'
-              }}>{fmt2(subtotal)}</td>
+              }}>
+                {(() => {
+                  if (formattedAmounts.subtotal) {
+                    return formattedAmounts.subtotal;
+                  } else if (formattingError) {
+                    const fallbackSymbol = !showINRAmounts ? CurrencyService.getCurrencySymbol(currency) : '₹';
+                    return `${fallbackSymbol}${subtotalINR.toLocaleString(!showINRAmounts ? 'en-US' : 'en-IN')}`;
+                  } else {
+                    return 'Loading...';
+                  }
+                })()}
+              </td>
             </tr>
 
-            {isIndian && isTelangana ? (
-              <>
-                <tr style={{ border: '1px solid #cccccc' }}>
-                  <td className="p-1 text-[6px] text-center" style={{
-                    padding: '3px 6px',
-                    fontSize: '8px',
-                    border: '1px solid #cccccc',
-                    textAlign: 'center',
-                    backgroundColor: '#ffffff'
-                  }}><span style={{fontWeight:'bold'}}>CGST @ 9%</span></td>
-                  <td className="p-1 text-[6px] text-center" style={{
-                    padding: '3px 6px',
-                    fontSize: '8px',
-                    border: '1px solid #cccccc',
-                    textAlign: 'center',
-                    backgroundColor: '#ffffff',
-                    whiteSpace: 'nowrap'
-                  }}>{fmt2(cgstAmount)}</td>
-                </tr>
-                <tr style={{ border: '1px solid #cccccc' }}>
-                  <td className="p-1 text-[6px] text-center" style={{
-                    padding: '3px 6px',
-                    fontSize: '8px',
-                    border: '1px solid #cccccc',
-                    textAlign: 'center',
-                    backgroundColor: '#ffffff'
-                  }}><span style={{fontWeight:'bold'}}>SGST @ 9%</span></td>
-                  <td className="p-1 text-[6px] text-center" style={{
-                    padding: '3px 6px',
-                    fontSize: '8px',
-                    border: '1px solid #cccccc',
-                    textAlign: 'center',
-                    backgroundColor: '#ffffff',
-                    whiteSpace: 'nowrap'
-                  }}>{fmt2(sgstAmount)}</td>
-                </tr>
-              </>
-            ) : (
-              <tr style={{ border: '1px solid #cccccc' }}>
-                <td className="p-1 text-[6px] text-center" style={{
-                  padding: '3px 6px',
-                  fontSize: '8px',
-                  border: '1px solid #cccccc',
-                  textAlign: 'center',
-                  backgroundColor: '#ffffff'
-                }}><span style={{fontWeight:'bold'}}>IGST @ {isIndian ? '18%' : '0%'}</span></td>
-                <td className="p-1 text-[6px] text-center" style={{
-                  padding: '3px 6px',
-                  fontSize: '8px',
-                  border: '1px solid #cccccc',
-                  textAlign: 'center',
-                  backgroundColor: '#ffffff',
-                  whiteSpace: 'nowrap'
-                }}>{fmt2(igstAmount)}</td>
-              </tr>
-            )}
+            {(() => {
+              console.log('🔍 DEBUG: GST Display Logic:', {
+                isClientCurrencyInvoice,
+                gstCalculation,
+                shouldShowNA: isClientCurrencyInvoice || gstCalculation.taxType === 'none'
+              });
+
+              if (gstCalculation.taxType === 'none' && !isClientCurrencyInvoice) {
+                // Show "NA" for GST when no tax applies (excluding client currency invoices)
+                return (
+                  <tr style={{ border: '1px solid #cccccc' }}>
+                    <td className="p-1 text-[6px] text-center" style={{
+                      padding: '3px 6px',
+                      fontSize: '8px',
+                      border: '1px solid #cccccc',
+                      textAlign: 'center',
+                      backgroundColor: '#ffffff'
+                    }}></td>
+                    <td className="p-1 text-[6px] text-center" style={{
+                      padding: '3px 6px',
+                      fontSize: '8px',
+                      border: '1px solid #cccccc',
+                      textAlign: 'center',
+                      backgroundColor: '#ffffff'
+                    }}></td>
+                    <td className="p-1 text-[6px] text-center" style={{
+                      padding: '3px 6px',
+                      fontSize: '8px',
+                      border: '1px solid #cccccc',
+                      textAlign: 'center',
+                      backgroundColor: '#ffffff'
+                    }}>
+                      <span style={{fontWeight:'bold'}}>GST</span>
+                    </td>
+                    <td className="p-1 text-[6px] text-center" style={{
+                      padding: '3px 6px',
+                      fontSize: '8px',
+                      border: '1px solid #cccccc',
+                      textAlign: 'center',
+                      backgroundColor: '#ffffff',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      NA
+                    </td>
+                  </tr>
+                );
+              }
+
+              // Show actual GST breakdown for other cases
+              return (
+                <>
+                  {gstCalculation.cgstAmount > 0 && (
+                    <tr style={{ border: '1px solid #cccccc' }}>
+                      <td className="p-1 text-[6px] text-center" style={{
+                        padding: '3px 6px',
+                        fontSize: '8px',
+                        border: '1px solid #cccccc',
+                        textAlign: 'center',
+                        backgroundColor: '#ffffff'
+                      }}></td>
+                      <td className="p-1 text-[6px] text-center" style={{
+                        padding: '3px 6px',
+                        fontSize: '8px',
+                        border: '1px solid #cccccc',
+                        textAlign: 'center',
+                        backgroundColor: '#ffffff'
+                      }}></td>
+                      <td className="p-1 text-[6px] text-center" style={{
+                        padding: '3px 6px',
+                        fontSize: '8px',
+                        border: '1px solid #cccccc',
+                        textAlign: 'center',
+                        backgroundColor: '#ffffff'
+                      }}>
+                        <span style={{fontWeight:'bold'}}>
+                          {gstCalculation.taxType === 'gst' ? `CGST @ ${gstCalculation.cgstRate}%` : 'Tax'}
+                        </span>
+                      </td>
+                      <td className="p-1 text-[6px] text-center" style={{
+                        padding: '3px 6px',
+                        fontSize: '8px',
+                        border: '1px solid #cccccc',
+                        textAlign: 'center',
+                        backgroundColor: '#ffffff',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {(() => {
+                          if (formattedAmounts.cgst) {
+                            return formattedAmounts.cgst;
+                          } else if (formattingError) {
+                            const fallbackSymbol = showINRAmounts ? '₹' : CurrencyService.getCurrencySymbol(currency);
+                            return `${fallbackSymbol}${gstCalculation.cgstAmount.toLocaleString(showINRAmounts ? 'en-IN' : 'en-US')}`;
+                          } else {
+                            return 'Loading...';
+                          }
+                        })()}
+                      </td>
+                    </tr>
+                  )}
+
+                  {gstCalculation.sgstAmount > 0 && (
+                    <tr style={{ border: '1px solid #cccccc' }}>
+                      <td className="p-1 text-[6px] text-center" style={{
+                        padding: '3px 6px',
+                        fontSize: '8px',
+                        border: '1px solid #cccccc',
+                        textAlign: 'center',
+                        backgroundColor: '#ffffff'
+                      }}></td>
+                      <td className="p-1 text-[6px] text-center" style={{
+                        padding: '3px 6px',
+                        fontSize: '8px',
+                        border: '1px solid #cccccc',
+                        textAlign: 'center',
+                        backgroundColor: '#ffffff'
+                      }}></td>
+                      <td className="p-1 text-[6px] text-center" style={{
+                        padding: '3px 6px',
+                        fontSize: '8px',
+                        border: '1px solid #cccccc',
+                        textAlign: 'center',
+                        backgroundColor: '#ffffff'
+                      }}>
+                        <span style={{fontWeight:'bold'}}>
+                          {gstCalculation.taxType === 'gst' ? `SGST @ ${gstCalculation.sgstRate}%` : 'Tax'}
+                        </span>
+                      </td>
+                      <td className="p-1 text-[6px] text-center" style={{
+                        padding: '3px 6px',
+                        fontSize: '8px',
+                        border: '1px solid #cccccc',
+                        textAlign: 'center',
+                        backgroundColor: '#ffffff',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {(() => {
+                          if (formattedAmounts.sgst) {
+                            return formattedAmounts.sgst;
+                          } else if (formattingError) {
+                            const fallbackSymbol = showINRAmounts ? '₹' : CurrencyService.getCurrencySymbol(currency);
+                            return `${fallbackSymbol}${gstCalculation.sgstAmount.toLocaleString(showINRAmounts ? 'en-IN' : 'en-US')}`;
+                          } else {
+                            return 'Loading...';
+                          }
+                        })()}
+                      </td>
+                    </tr>
+                  )}
+
+                  {gstCalculation.igstAmount > 0 && (
+                    <tr style={{ border: '1px solid #cccccc' }}>
+                      <td className="p-1 text-[6px] text-center" style={{
+                        padding: '3px 6px',
+                        fontSize: '8px',
+                        border: '1px solid #cccccc',
+                        textAlign: 'center',
+                        backgroundColor: '#ffffff'
+                      }}></td>
+                      <td className="p-1 text-[6px] text-center" style={{
+                        padding: '3px 6px',
+                        fontSize: '8px',
+                        border: '1px solid #cccccc',
+                        textAlign: 'center',
+                        backgroundColor: '#ffffff'
+                      }}></td>
+                      <td className="p-1 text-[6px] text-center" style={{
+                        padding: '3px 6px',
+                        fontSize: '8px',
+                        border: '1px solid #cccccc',
+                        textAlign: 'center',
+                        backgroundColor: '#ffffff'
+                      }}>
+                        <span style={{fontWeight:'bold'}}>
+                          {gstCalculation.taxType === 'gst'
+                            ? `IGST @ ${gstCalculation.igstRate}%`
+                            : gstCalculation.taxType === 'international'
+                              ? `IGST @ ${gstCalculation.igstRate || 18}%`
+                              : `Tax @ ${gstCalculation.igstRate}%`
+                          }
+                        </span>
+                      </td>
+                      <td className="p-1 text-[6px] text-center" style={{
+                        padding: '3px 6px',
+                        fontSize: '8px',
+                        border: '1px solid #cccccc',
+                        textAlign: 'center',
+                        backgroundColor: '#ffffff',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {(() => {
+                          if (formattedAmounts.igst) {
+                            return formattedAmounts.igst;
+                          } else if (formattingError) {
+                            const fallbackSymbol = showINRAmounts ? '₹' : CurrencyService.getCurrencySymbol(currency);
+                            return `${fallbackSymbol}${gstCalculation.igstAmount.toLocaleString(showINRAmounts ? 'en-IN' : 'en-US')}`;
+                          } else {
+                            return 'Loading...';
+                          }
+                        })()}
+                      </td>
+                    </tr>
+                  )}
+                </>
+              );
+            })()}
 
             <tr className="font-bold" style={{ border: '1px solid #cccccc' }}>
+               <td className="p-1 text-[6px] text-center" style={{
+                 padding: '3px 6px',
+                 fontSize: '8px',
+                 border: '1px solid #cccccc',
+                 textAlign: 'center',
+                 backgroundColor: '#ffffff'
+               }}></td>
+               <td className="p-1 text-[6px] text-center" style={{
+                 padding: '3px 6px',
+                 fontSize: '8px',
+                 border: '1px solid #cccccc',
+                 textAlign: 'center',
+                 backgroundColor: '#ffffff'
+               }}></td>
                <td className="p-1 text-[6px] text-center" style={{
                  padding: '3px 6px',
                  fontSize: '8px',
@@ -745,12 +1396,30 @@ export default function InvoicePreview() {
                  textAlign: 'center',
                  backgroundColor: '#ffffff',
                  whiteSpace: 'nowrap'
-               }}>{fmt2(total)}</td>
+               }}>
+                 {(() => {
+                   if (formattedAmounts.total) {
+                     return formattedAmounts.total;
+                   } else if (formattingError) {
+                     const fallbackSymbol = !showINRAmounts ? CurrencyService.getCurrencySymbol(currency) : '₹';
+                     return `${fallbackSymbol}${totalINR.toLocaleString(!showINRAmounts ? 'en-US' : 'en-IN')}`;
+                   } else {
+                     return 'Loading...';
+                   }
+                 })()}
+               </td>
              </tr>
 
-            {/* Amount in words row */}
+            {/* Amount in words row: label in column 3 and words in column 4 */}
             <tr style={{ border: '1px solid #cccccc' }}>
-              <td className="p-1 text-[6px] text-center" colSpan={2} style={{
+              <td className="p-1 text-[6px] text-center" style={{
+                padding: '3px 6px',
+                fontSize: '8px',
+                border: '1px solid #cccccc',
+                textAlign: 'center',
+                backgroundColor: '#ffffff'
+              }}></td>
+              <td className="p-1 text-[6px] text-center" style={{
                 padding: '3px 6px',
                 fontSize: '8px',
                 border: '1px solid #cccccc',
@@ -770,31 +1439,56 @@ export default function InvoicePreview() {
                 border: '1px solid #cccccc',
                 textAlign: 'left',
                 backgroundColor: '#ffffff'
-              }}>{numberToWordsINR(total)}</td>
+              }}>
+                {invoice ? (() => {
+                  console.log('🔍 DEBUG: Amount in words - Invoice type analysis:', {
+                    isInternationalInvoice,
+                    isClientCurrencyInvoice,
+                    currency,
+                    totalINR,
+                    displayCurrency
+                  });
+
+                  // Determine the correct amount and currency for words conversion
+                  let amountForWords = totalINR;
+                  let currencyForWords = displayCurrency;
+
+                  if (isInternationalInvoice) {
+                    // International Invoice (INR format) - Show INR only for words
+                    console.log('🔍 DEBUG: Converting INR amount to words for International Invoice');
+                    amountForWords = totalINR;
+                    currencyForWords = 'INR';
+                  } else if (isClientCurrencyInvoice) {
+                    // Client's own currency invoice - Show client currency only
+                    console.log('🔍 DEBUG: Converting client currency amount to words');
+                    amountForWords = totalINR;
+                    currencyForWords = currency;
+                  } else {
+                    // Indian client - Show INR
+                    console.log('🔍 DEBUG: Converting INR amount to words for Indian client');
+                    amountForWords = totalINR;
+                    currencyForWords = 'INR';
+                  }
+
+                  console.log('🔍 DEBUG: Amount in words conversion:', {
+                    amountForWords,
+                    currencyForWords,
+                    isInternationalInvoice,
+                    isClientCurrencyInvoice
+                  });
+
+                  return numberToWords(amountForWords, currencyForWords);
+                })() : 'Loading...'}
+              </td>
             </tr>
           </tbody>
         </table>
 
-        {/* 4) Bank Details — equal columns */}
+        {/* Bank Details - Enhanced styling with consistent format */}
         <h2 className="font-semibold mb-3 text-[14px]" style={{ color: headingColor, fontSize: '14px', marginBottom: '12px', marginTop: '16px', fontFamily: 'Calibri, sans-serif' }}>
            Bank Details
         </h2>
-        <table
-          className="w-full border-collapse mb-3 text-center"
-          style={{
-            marginBottom: '12px',
-            fontSize: '10px',
-            border: '1px solid #cccccc',
-            backgroundColor: '#ffffff',
-            fontFamily: 'Calibri, sans-serif',
-            tableLayout: 'fixed',
-            width: '100%'
-          }}
-        >
-          <colgroup>
-            <col style={{ width: '50%' }} />
-            <col style={{ width: '50%' }} />
-          </colgroup>
+        <table className="w-full border-collapse mb-3 text-center" style={{ marginBottom: '12px', fontSize: '10px', border: '1px solid #cccccc', backgroundColor: '#ffffff', fontFamily: 'Calibri, sans-serif' }}>
           <tbody>
             <tr style={{ border: '1px solid #cccccc' }}>
               <td className="p-1 text-[6px] w-1/3 text-center" style={{

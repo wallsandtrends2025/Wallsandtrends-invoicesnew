@@ -1,5 +1,7 @@
 ﻿import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import CurrencyService from './CurrencyService';
+import { numberToWords } from './generateInvoicePDF';
 
 /**
  * Proforma/quotation PDF generator aligned with the shared Walls & Trends visual reference.
@@ -158,46 +160,129 @@ export async function generateProformaInvoicePDF(invoice, client) {
   const isIndian = clientCountry === COMPANY_COUNTRY;
   const isTelangana = clientState === COMPANY_STATE;
 
-  const rawSubtotal =
-    invoice?.subtotal != null
-      ? Number(invoice.subtotal)
-      : calcSubtotalFromServices(invoice);
-  const subtotal = Number.isFinite(rawSubtotal) ? rawSubtotal : 0;
+  // Determine invoice type based on client country and currency
+  let currency = invoice?.currency || 'INR';
+  const isIndianClient = client?.country && client.country.toLowerCase().includes('india');
 
-  let cgstRate = 0;
-  let sgstRate = 0;
-  let igstRate = 0;
-  if (isIndian && isTelangana) {
-    cgstRate = 9;
-    sgstRate = 9;
-  } else if (isIndian) {
-    igstRate = 18;
+  // For international clients, determine if they want INR or local currency
+  const isInternationalClient = client?.country && !client.country.toLowerCase().includes('india');
+  const clientLocalCurrency = isInternationalClient ? CurrencyService.getDefaultCurrencyForClient(client) : 'INR';
+
+  const isInternationalInvoice = currency === 'INR' && isInternationalClient; // International clients requesting INR invoice (show INR + local currency)
+  const isClientCurrencyInvoice = currency !== 'INR' && isInternationalClient; // International clients requesting their own currency (show only local currency)
+
+  // Use correct subtotal based on invoice type
+  const rawSubtotalINR = invoice?.subtotal_inr || invoice?.subtotal || 0;
+  const rawSubtotal = invoice?.subtotal || 0;
+
+  const cleanSubtotalINR = currency === 'INR' ?
+    CurrencyService.sanitizeAmount(rawSubtotalINR) :
+    CurrencyService.sanitizeAmount(rawSubtotalINR || rawSubtotal);
+
+  const cleanSubtotal = CurrencyService.sanitizeAmount(rawSubtotal);
+
+  let subtotalINR;
+  const displayCurrency = isClientCurrencyInvoice ? currency : 'INR';
+
+  if (isInternationalInvoice) {
+    // International Invoice (INR format) - Show ONLY INR amounts and GST (no dual currency)
+    subtotalINR = cleanSubtotalINR;
+  } else if (isClientCurrencyInvoice) {
+    // Client's own currency invoice - Show only client currency, no INR
+    subtotalINR = cleanSubtotal;
+  } else {
+    // Indian client or INR invoice - Show INR amounts
+    subtotalINR = cleanSubtotalINR;
   }
 
-  const cgstAmount =
-    invoice?.cgst != null
-      ? Number(invoice.cgst)
-      : roundToTwo(subtotal * (cgstRate / 100));
-  const sgstAmount =
-    invoice?.sgst != null
-      ? Number(invoice.sgst)
-      : roundToTwo(subtotal * (sgstRate / 100));
-  const igstAmount =
-    invoice?.igst != null
-      ? Number(invoice.igst)
-      : roundToTwo(subtotal * (igstRate / 100));
-  const totalTax = cgstAmount + sgstAmount + igstAmount;
-  const computedTotal = roundToTwo(subtotal + totalTax);
-  const total =
-    invoice?.total_amount != null ? Number(invoice.total_amount) : computedTotal;
-
-  const precise = roundToTwo(total);
-  const rupees = Math.floor(precise);
-  const paise = Math.round((precise - rupees) * 100);
-  let words = convertNumberToWords(rupees);
-  if (paise > 0) {
-    words += ` and ${convertNumberToWords(paise)} Paise`;
+  // Use CurrencyService for tax calculations based on client country and currency
+  let gstResult;
+  try {
+    if (isInternationalInvoice) {
+      gstResult = CurrencyService.calculateGST(subtotalINR, client?.state, client);
+    } else if (isClientCurrencyInvoice) {
+      gstResult = {
+        cgstAmount: 0,
+        sgstAmount: 0,
+        igstAmount: 0,
+        totalTax: 0,
+        totalAmount: subtotalINR,
+        taxType: 'none'
+      };
+    } else {
+      gstResult = CurrencyService.calculateGST(subtotalINR, client?.state, client);
+    }
+  } catch (error) {
+    console.error('Error in GST calculation, using fallback:', error);
+    if (isInternationalInvoice) {
+      const taxRate = 18;
+      const taxAmount = (subtotalINR * taxRate) / 100;
+      gstResult = {
+        cgstRate: 0,
+        sgstRate: 0,
+        igstRate: taxRate,
+        cgstAmount: 0,
+        sgstAmount: 0,
+        igstAmount: taxAmount,
+        totalTax: taxAmount,
+        totalAmount: subtotalINR + taxAmount,
+        isInternationalTax: true,
+        taxType: 'international'
+      };
+    } else if (isClientCurrencyInvoice) {
+      gstResult = {
+        cgstAmount: 0,
+        sgstAmount: 0,
+        igstAmount: 0,
+        totalTax: 0,
+        totalAmount: subtotalINR,
+        taxType: 'none'
+      };
+    } else {
+      const isTelangana = toLower(client?.state) === COMPANY_STATE;
+      let cgstRate = 0, sgstRate = 0, igstRate = 0;
+      if (isTelangana) { cgstRate = 9; sgstRate = 9; }
+      else { igstRate = 18; }
+      const cgstAmount = (subtotalINR * cgstRate) / 100;
+      const sgstAmount = (subtotalINR * sgstRate) / 100;
+      const igstAmount = (subtotalINR * igstRate) / 100;
+      gstResult = {
+        cgstRate,
+        sgstRate,
+        igstRate,
+        cgstAmount,
+        sgstAmount,
+        igstAmount,
+        totalTax: cgstAmount + sgstAmount + igstAmount,
+        totalAmount: subtotalINR + cgstAmount + sgstAmount + igstAmount,
+        isInternationalTax: false,
+        taxType: 'gst'
+      };
+    }
   }
+
+  const cgstAmount = gstResult.cgstAmount;
+  const sgstAmount = gstResult.sgstAmount;
+  const igstAmount = gstResult.igstAmount;
+  const totalTax = gstResult.totalTax;
+
+  const computedTotal = Number((subtotalINR + totalTax).toFixed(2));
+
+  let subtotal, total;
+  if (isClientCurrencyInvoice) {
+    // Client's own currency invoice - Show only client currency, no INR
+    subtotal = subtotalINR;
+    total = subtotalINR;
+  } else {
+    subtotal = subtotalINR;
+    total = computedTotal;
+  }
+
+  const cleanTotalForWords = CurrencyService.sanitizeAmount(total);
+  const wordsCurrency = isInternationalInvoice ? 'INR' : displayCurrency;
+  const words = numberToWords(cleanTotalForWords, wordsCurrency);
+
+  // Words already calculated above
 
   let y = M_T;
 
@@ -333,12 +418,12 @@ export async function generateProformaInvoicePDF(invoice, client) {
         },
       },
       {
-        content: `${totalLabel} ${fmt0(total)}`,
+        content: `${totalLabel} ${CurrencyService.formatAmountForPDF(total, displayCurrency)}`,
         styles: { fontStyle: 'bold', valign: 'top' },
         didDrawCell(data) {
           const { cell, doc } = data;
           const labelText = totalLabel.replace(':', '');
-          const valueText = fmt0(total);
+          const valueText = CurrencyService.formatAmountForPDF(total, displayCurrency);
           const labelWidth = doc.getTextWidth(labelText + ': ');
           const cellX = cell.x;
           const cellY = cell.y + 3;
@@ -431,14 +516,35 @@ export async function generateProformaInvoicePDF(invoice, client) {
   y = doc.lastAutoTable.finalY + 3;
 
   /* ---------------------- Items table (unchanged widths) ---------------------- */
-  const servicesRows = buildServiceRowsNoDecimals(invoice, fmt0);
-  const taxRows =
-    isIndian && isTelangana
-      ? [
-          ['', '', `CGST @ ${cgstRate}%`, fmt0(cgstAmount)],
-          ['', '', `SGST @ ${sgstRate}%`, fmt0(sgstAmount)],
-        ]
-      : [['', '', `IGST @ ${igstRate}%`, fmt0(igstAmount)]];
+  const servicesRows = buildServiceRowsWithCurrency(invoice, displayCurrency);
+
+  // Handle tax rows based on tax type
+  let taxRows = [];
+  if (gstResult.taxType === 'international' && igstAmount > 0) {
+    taxRows.push(
+      ['', '', `IGST @ ${gstResult.igstRate}%`, CurrencyService.formatCurrencyDisplay(igstAmount, displayCurrency)],
+    );
+  } else if (gstResult.taxType === 'gst') {
+    if (gstResult.cgstAmount > 0) {
+      taxRows.push(
+        ['', '', `CGST @ ${gstResult.cgstRate}%`, CurrencyService.formatCurrencyDisplay(cgstAmount, displayCurrency)],
+      );
+    }
+    if (gstResult.sgstAmount > 0) {
+      taxRows.push(
+        ['', '', `SGST @ ${gstResult.sgstRate}%`, CurrencyService.formatCurrencyDisplay(sgstAmount, displayCurrency)],
+      );
+    }
+    if (gstResult.igstAmount > 0) {
+      taxRows.push(
+        ['', '', `IGST @ ${gstResult.igstRate}%`, CurrencyService.formatCurrencyDisplay(igstAmount, displayCurrency)],
+      );
+    }
+  } else if (gstResult.taxType === 'none' && !isClientCurrencyInvoice) {
+    taxRows.push(
+      ['', '', 'GST', 'NA'],
+    );
+  }
 
   const amountInWordsRow = [
     { content: '(Total Amount In Words)', colSpan: 3 },
@@ -447,15 +553,15 @@ export async function generateProformaInvoicePDF(invoice, client) {
 
   const tableBody = [
     ...servicesRows,
-    ['', '', 'Gross', fmt0(subtotal)],
+    ['', '', 'Gross', CurrencyService.formatCurrencyDisplay(subtotal, displayCurrency)],
     ...taxRows,
-    ['', '', 'Total', fmt0(total)],
+    ['', '', 'Total', CurrencyService.formatCurrencyDisplay(total, displayCurrency)],
     amountInWordsRow,
   ];
 
   autoTable(doc, {
     startY: y,
-    head: [['HSN / SAC Code', 'Item', 'Description', 'Amount (INR)']],
+    head: [['HSN / SAC Code', 'Item', 'Description', `Amount (${displayCurrency})`]],
     body: tableBody,
     theme: 'grid',
     headStyles: {
@@ -549,6 +655,7 @@ export async function testProformaPDFFixes() {
     proforma_id: 'WT2509PRF034',
     proforma_date: new Date('2025-09-25').toISOString(),
     proforma_title: 'Quotation for Nenu Ready',
+    currency: 'INR',
     services: [
       {
         name: 'Teaser, Trailer',
@@ -688,7 +795,7 @@ function deriveTitleFromServices(invoice) {
   return first || '';
 }
 
-function buildServiceRowsNoDecimals(invoice, fmt0) {
+function buildServiceRowsWithCurrency(invoice, displayCurrency) {
   const arr = Array.isArray(invoice?.services) ? invoice.services : [];
   if (arr.length) {
     return arr.map((s, i) => {
@@ -697,7 +804,8 @@ function buildServiceRowsNoDecimals(invoice, fmt0) {
         : s?.name || `Service ${i + 1}`;
       const desc = String(s?.description || '');
       const amt = Number(s?.amount || 0);
-      return ['9983', String(nm), desc, fmt0(amt)];
+      const formattedAmount = CurrencyService.formatCurrencyDisplay(amt, displayCurrency);
+      return ['9983', String(nm), desc, formattedAmount];
     });
   }
   const nm = String(
@@ -709,7 +817,8 @@ function buildServiceRowsNoDecimals(invoice, fmt0) {
   );
   const desc = String(invoice?.service_description || '');
   const amt = Number(invoice?.subtotal || 0);
-  return [['9983', nm, desc, fmt0(amt)]];
+  const formattedAmount = CurrencyService.formatCurrencyDisplay(amt, displayCurrency);
+  return [['9983', nm, desc, formattedAmount]];
 }
 
 function calcSubtotalFromServices(invoice) {

@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { db } from "../firebase";
 import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
+import CurrencyService from "../utils/CurrencyService";
 
 export default function AllInvoices() {
   const [invoices, setInvoices] = useState([]);
@@ -36,8 +37,9 @@ export default function AllInvoices() {
     return names.length > 0 ? names.join(", ") : "—";
   };
 
-  const formatINR = (n) =>
-    `₹${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+  const formatAmount = (amount, currency) => {
+    return CurrencyService.formatAmountForPDF(amount, currency || 'INR');
+  };
 
   const formatStatus = (status) => {
     const lower = (status || "").toLowerCase();
@@ -400,7 +402,7 @@ export default function AllInvoices() {
                         {getServiceNames(invoice.services)}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap text-right p-[10px]">
-                        {formatINR(invoice.total_amount)}
+                        {formatAmount(invoice.total_amount, invoice.currency)}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap text-center p-[10px]">
                         {formatStatus(invoice.payment_status)}
