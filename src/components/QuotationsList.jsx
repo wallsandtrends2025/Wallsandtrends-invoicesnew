@@ -16,6 +16,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useNavigate } from "react-router-dom";
+import CurrencyService from "../utils/CurrencyService";
 
 export default function ProformaList() {
   const [proformas, setProformas] = useState([]);
@@ -55,8 +56,9 @@ export default function ProformaList() {
     return names.length ? names.join(", ") : "—";
   };
 
-  const formatINR = (n) =>
-    `₹${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+  const formatAmount = (amount, currency) => {
+    return CurrencyService.formatAmountForPDF(amount, currency || 'INR');
+  };
 
   const rawStatus = (p) =>
     (p.status ??
@@ -416,7 +418,7 @@ export default function ProformaList() {
                         {renderServices(p.services)}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap text-right p-[10px]">
-                        {formatINR(amount)}
+                        {formatAmount(amount, p.currency)}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-800 whitespace-nowrap text-center p-[10px]">
                         {statusNode}

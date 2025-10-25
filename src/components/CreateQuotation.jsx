@@ -10,6 +10,8 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import Select from "react-select";
+import CurrencyService from "../utils/CurrencyService";
+import { getCurrencyOptionsForSelect } from "../constants/currencies";
 
 // helper: "Label *"
 const RequiredLabel = ({ children }) => (
@@ -44,6 +46,10 @@ export default function CreateProforma() {
   ]);
 
   const [paymentStatus, setPaymentStatus] = useState("Pending");
+
+  // Currency states
+  const [availableCurrencies, setAvailableCurrencies] = useState(["INR"]);
+  const [selectedCurrency, setSelectedCurrency] = useState("INR");
 
   // inline validation (mirrors CreateInvoice shape)
   const [errors, setErrors] = useState({
@@ -86,6 +92,22 @@ export default function CreateProforma() {
     { label: "Corporate Film", value: "Corporate Film" },
     { label: "Shoot Camera Equipment", value: "Shoot Camera Equipment" },
   ];
+
+  // Currency options for React Select - Show client currency first, then INR
+  const currencyOptions = useMemo(() => {
+    if (!selectedClient?.country) {
+      return getCurrencyOptionsForSelect(['INR']);
+    }
+
+    const clientCurrency = CurrencyService.getDefaultCurrencyForClient(selectedClient);
+
+    const currencies = [clientCurrency];
+    if (clientCurrency !== 'INR') {
+      currencies.push('INR');
+    }
+
+    return getCurrencyOptionsForSelect(currencies);
+  }, [selectedClient]);
 
   // load clients
   useEffect(() => {
@@ -288,6 +310,7 @@ export default function CreateProforma() {
       proforma_type: yourCompany,
       proforma_title: proformaTitle,
       proforma_date: proformaDate,
+      currency: selectedCurrency,
       services: sanitized,
       subtotal: Number(amount.toFixed(2)),
       total_amount: Number(amount.toFixed(2)),
@@ -417,6 +440,20 @@ export default function CreateProforma() {
               setSelectedClientId(id);
               const client = filteredClients.find((c) => c.id === id);
               setSelectedClient(client || null);
+
+              // Set default currency to client's local currency
+              if (client?.country) {
+                const clientCurrency = CurrencyService.getDefaultCurrencyForClient(client);
+                console.log('🔍 DEBUG: CreateQuotation - Client selected:', {
+                  clientName: client.client_name,
+                  clientCountry: client.country,
+                  clientCurrency: clientCurrency,
+                });
+                setSelectedCurrency(clientCurrency);
+              } else {
+                setSelectedCurrency("INR");
+              }
+
               setErrors((prev) => ({ ...prev, selectedClientId: "" }));
             }}
             placeholder={yourCompany ? "Select Client..." : "Select company first"}
@@ -528,7 +565,7 @@ export default function CreateProforma() {
                 </div>
 
                 <div style={{ marginBottom: 15 }}>
-                  <RequiredLabel>Service Amount ₹</RequiredLabel>
+                  <RequiredLabel>Service Amount ({CurrencyService.getCurrencySymbol(selectedCurrency)})</RequiredLabel>
                   <input
                     type="number"
                     min="1"
@@ -610,6 +647,28 @@ export default function CreateProforma() {
             {services.length === 0 ? "Add Service" : "Add Another Service"}
           </button>
 
+          {/* Currency Selection */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ fontWeight: 600 }}>Currency</label>
+            <Select
+              options={currencyOptions}
+              value={currencyOptions.find(opt => opt.value === selectedCurrency)}
+              onChange={(option) => {
+                const newCurrency = option?.value || "INR";
+                setSelectedCurrency(newCurrency);
+              }}
+              styles={{
+                control: (base) => ({
+                  ...base,
+                  padding: "2px",
+                  borderRadius: "10px",
+                  border: "1px solid #ccc",
+                }),
+              }}
+              isSearchable={false}
+            />
+          </div>
+
           {/* Payment Status */}
           <div style={{ marginBottom: 20 }}>
             <label style={{ fontWeight: 600 }}>Payment Status</label>
@@ -638,9 +697,9 @@ export default function CreateProforma() {
               marginBottom: 20,
             }}
           >
-            <p>Subtotal: ₹{formatAmount(subtotal)}</p>
+            <p>Subtotal: {CurrencyService.getCurrencySymbol(selectedCurrency)}{formatAmount(subtotal)}</p>
             <p>
-              <b>Total Amount:</b> ₹{formatAmount(subtotal)}
+              <b>Total Amount:</b> {CurrencyService.getCurrencySymbol(selectedCurrency)}{formatAmount(subtotal)}
             </p>
           </div>
 
@@ -689,6 +748,7 @@ export default function CreateProforma() {
                   setProformaTitle("");
                   setServices([{ name: [], description: "", amount: "" }]);
                   setPaymentStatus("Pending");
+                  setSelectedCurrency("INR");
                   setErrors({
                     yourCompany: "",
                     proformaDate: "",
