@@ -1,0 +1,196 @@
+﻿invoice_id,client_id,project_id,invoice_type,invoice_title,invoice_date,subtotal,cgst,sgst,igst,tax_amount,total_amount,payment_status,gst_payment_status,payment_date,pdf_url,tax_pdf_id,proforma_pdf_id,created_at,service1_name_csv,service1_description,service1_amount,service2_name_csv,service2_description,service2_amount,service3_name_csv,service3_description,service3_amount,service4_name_csv,service4_description,service4_amount,service5_name_csv,service5_description,service5_amount,service6_name_csv,service6_description,service6_amount,service7_name_csv,service7_description,service7_amount,service8_name_csv,service8_description,service8_amount,service9_name_csv,service9_description,service9_amount,service10_name_csv,service10_description,service10_amount
+WT2503INV013,CL101,,WT,Robinhood Lyrical Video,19-03-2025,100000,9000,9000,,18000,118000,,,,,,,,Lyrical Video,Item song,100000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2503INV020,CL049,,WT,Hit3 Lyrical Video,29-03-2025,175000,15750,15750,,31500,206500,,,,,,,,Lyrical Video,Hit 3 song - 5 languages,175000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2504INV001,CL131,,WT,Jack - Influencer Marketing,03-04-2025,705000,63450,63450,,126900,831900,,,,,,,,,Male Influencers,270000,Gangavva and Tasty Teja influencers,135000,Female Influencers,300000,,,,,,,,,,,,,,,,,,,,,,,
+WT2504INV003,CL033,,WT,Single Movie - Lyrical Videos,05-04-2025,50000,4500,4500,,9000,59000,,,,,,,,Single Lyrical,Shilpi Yevaro song,50000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2504INV004,CL227,,WT,Lenin - Meme Marketing,07-04-2025,180000,16200,16200,,32400,212400,,,,,,,,Meme Marketing,3 campaigns,180000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2504INV005,CL095,,WT,SDGM Making,07-04-2025,90000,8100,8100,,16200,106200,,,,,,,,Making - March 2025,Capturing the BTS of SDGM Making,90000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2504INV008,CL228,,WT,Odela2 Lyrical Videos,14-04-2025,45000,4050,4050,,8100,53100,,,,,,,,Lyricals,Song 1,45000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2504INV010,CL033,,WT,Single Chiraku Aina Lyrical Videos,22-04-2025,40000,3600,3600,,7200,47200,,,,,,,,Lyricals,Chiraku aina single brathuku,40000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2502INV003,CL063,,WT,Real Insights - Social Media,28-02-2025,150000,13500,13500,,27000,177000,,,,,,,,Social Media Marketing,Mar-25,150000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2503INV002,CL038,,WTX,ZEE shoots,24-03-2025,44395,3995.55,3995.55,,7991.1,52386.1,,,,,,,,Videography charges,Digital Shoots for Holi Event,44395,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2503INV003,CL038,,WTX,ZEE - Social Media Marketing services,24-03-2025,650000,58500,58500,,117000,767000,,,,,,,,Social Media Marketing Services,For the month of March 2025,650000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2503INV004,CL038,,WTX,ZEE shoots,24-03-2025,3500,315,315,,630,4130,,,,,,,,Influencer charges,DJ Auditions promotions,3500,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2504INV001,CL147,,WTX,SAS Crown - Marketing,08-04-2025,250000,22500,22500,,45000,295000,,,,,,,,Marketing,For the month of April 2025,250000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2504INV003,CL063,,WTX,Real Insights - Social Media,30-04-2025,150000,13500,13500,,27000,177000,,,,,,,,Social Media Marketing,May-25,150000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2504INV006,CL128,,WTX,ART - Branding Advance,30-04-2025,118000,10620,10620,,21240,139240,,,,,,,,Branding,Advance for branding works,118000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2501INV006,CL038,,WT,ZEE Shoots,09-01-2025,116000,10440,10440,,20880,136880,,,,,,,,Videography charges,Digital Shoots for Sarigamapa,31000,Videography charges,Digital shoots for Sankranthi Sambaralu,85000,,,,,,,,,,,,,,,,,,,,,,,,
+WT2503INV022,CL164,,WT,OSSS Advance Invoice,31-03-2025,500000,45000,45000,,90000,590000,,,,,,,,Marketing advance,,250000,Teasers and Trailers,,150000,Lyrical Video,First song,100000,,,,,,,,,,,,,,,,,,,,,
+WT2504INV013,CL070,,WT,Durga Arts - Workspace Expenses,30-04-2025,143050,12874.5,12874.5,,25749,168799,,,,,,,,Workspace,Mar-25,82510,Workspace,Apr-25,60540,,,,,,,,,,,,,,,,,,,,,,,,
+WT2504INV006,CL095,,WT,Jaat Lyrical Videos,07-04-2025,150000,13500,13500,,27000,177000,,,,,,,,Lyricals,3 songs,150000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2504INV009,CL137,,WT,Kubera Marketing Advance,22-04-2025,450000,40500,40500,,81000,531000,,,,,,,,Marketing team,50% Advance for Kubera marketing,450000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2504INV011,CL229,,WT,KD Setavvade Campaign,24-04-2025,1051000,94590,94590,,189180,1240180,,,,,,,,Infuencer campaign,"Setavvade Song - 85% advance and 15%
+immediatey after campaign",1051000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2504INV012,CL035,,WT,YouTube Ads Campaign,24-04-2025,150000,13500,13500,,27000,177000,,,,,,,,YouTube Ads Campaign,,150000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2505INV008,CL047,,WT,Bhakta Kannappa - Lyrical Videos,26-05-2025,175000,15750,15750,,31500,206500,,,,,,,,Lyrical Video,Sri Kalahasthi song,175000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2505INV010,CL230,,WT,Seetha Payanam - Lyrical Video,29-05-2025,80000,,0,,14400,94400,,,,,,,,First song Lyrical,With 1 additional language,"80,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2505INV005,CL137,,WT,Kubera Influencer Marketing,16-05-2025,150000,13500,13500,,27000,177000,,,,,,,,Kubera Influencer Marketing,Poyiraa song,150000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2504INV002,CL038,,WTX,ZEE - Social Media Marketing services,30-04-2025,650000,58500,58500,,117000,767000,,,,,,,,Social Media Marketing Services,For the month of April 2025,650000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2504INV004,CL147,,WTX,SAS Crown - Marketing,30-04-2025,"2,50,000",22500,22500,,45000,295000,,,,,,,,Marketing,For the month of May 2025,"2,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2504INV004,CL231,,WTX,Minfy Tehnologies - Marketing,30-04-2025,150000,13500,13500,,27000,177000,,,,,,,,Marketing,For the month of May 2025,150000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2504INV007,CL039,,WTX,NTR TRUST and Bhuvaneswari garu - Social Media Marketing,30-04-2025,100000,9000,9000,,18000,118000,,,,,,,,Social Media,NTR Trust,100000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2505INV001,CL147,,WTX,SAS Crown - Marketing,30-05-2025,250000,22500,22500,,45000,295000,,,,,,,,Marketing,For the month of June 2025,250000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2505INV002,CL063,,WTX,Real Insights - Social Media,30-05-2025,154500,13905,13905,,27810,182310,,,,,,,,Social Media Marketing,Jun-25,150000,Performance Marketing,Service Fee,4500,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2505INV003,CL231,,WTX,Minfy Tehnologies - Marketing,30-05-2025,150000,13500,13500,,27000,177000,,,,,,,,Marketing,For the month of June 2025,150000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2505INV004,CL039,,WTX,NTR TRUST and Bhuvaneswari garu - Social Media Marketing,30-05-2025,100000,9000,9000,,18000,118000,,,,,,,,Social Media,NTR Trust,100000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2505INV003,CL023,,WT,YouTube Channels Suspension,11-05-2025,60000,,0,10800,10800,70800,,,,,,,,YouTube Channels Suspension,,60000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2506INV004,CL172,,WT,Mad Square Marketing,12-06-2025,650000,58500,58500,,117000,767000,,,,,,,,Marketing,"Social Media creatives, Statics, Video
+Edits, Post Copies, PR and Web Articles,
+Concept Videos and interviews execution
+and coordination",500000,Lyrical Videos,Swathi Reddy and Vaccharoi,150000,,,,,,,,,,,,,,,,,,,,,,,,
+WT2506INV010,CL017,,WT,Thalapathy69 - Influencer Marketing,20-06-2025,1110000,99900,99900,,199800,1309800,,,,,,,,Influencers marketing,Telugu Twitter Influencers (Full Movie),600000,Influencers marketing,"Telugu Website coverage (GA, M9, T360,
+Gulte, 123Telugu, Pinkvilla & Pinkvilla
+South, Idlebarain) - Teaser - 1 Asset",280000,Influencers marketing,North Twitter Influencers - Teaser - 1,230000,,,,,,,,,,,,,,,,,,,,,
+WT2506INV011,CL068,,WT,HERO - Brand Film Coordination,25-06-2025,325000,29250,29250,0,58500,383500,,,,,,,,HERO Coordination,,325000,,,,,Asset,,,,,,,,,,,,,,,,,,,,,,
+WT2506INV012,CL156,,WT,HHVM - Marketing Advance,28-06-2025,300000,,0,54000,54000,354000,,,,,,,,Marketing,"Marketing - 7L (till July 24th 2025) - If
+postponed, 1L extra for each month.
+Advance 3L",300000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2506INV013,CL164,,WT,ENE2 Motion Poster and Announcement event,30-06-2025,125000,11250,11250,,22500,147500,,,,,,,,Motion Poster,,60000,Cameras Shoot,,35000,Twitter fandom influcencers,,30000,,,,,,,,,,,,,,,,,,,,,
+WT2506INV001,CL137,,WT,Kubera Lyrical Videos,02-06-2025,320000,28800,28800,,57600,377600,,,,,,,,Lyricals,"Poyiraa Maama - Original + 4 additional
+languages",160000,Lyricals,"Kadha Kadha - Original + 4 additional
+languages",160000,,,,,,,,,,,,,,,,,,,,,,,,
+WT2506INV003,CL121,,WT,3 Roses Creatives - Advances,02-06-2025,150000,13500,13500,,27000,177000,,,,,,,,Creatives,Advance,150000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2506INV006,CL137,,WT,Kubera Marketing Balance,17-06-2025,450000,40500,40500,,81000,531000,,,,,,,,Marketing team,50% Balance for Kubera marketing,450000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2506INV007,CL137,,WT,Kubera Lyrical Videos,17-06-2025,260000,23400,23400,,46800,306800,,,,,,,,Lyricals,"Pippi Pippi - Original + 4 additional
+languages",0,Lyricals,"Na Koduka - Original + 4 additional
+languages",160000,Happy Days Trailer and Creatives,,100000,,,,,,,,,,,,,,,,,,,,,
+WT2506INV014,CL121,,WT,3 Roses Creatives - Balances,30-06-2025,200000,18000,18000,,36000,236000,,,,,,,,Creatives,Balance,200000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2506INV001,CL037,,WT,Star Maa - Social Media and Creatives,23-06-2025,1500000,135000,135000,,270000,1770000,,,,,,,,Social Media and Creatives,For the months of April and May 2025,1500000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2506INV002,CL128,,WT,ART - Branding Balance,30-06-2025,275000,24750,24750,,49500,324500,,,,,,,,Branding,Balance for branding works,275000,,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2506INV003,CL037,,WT,Star Maa - Social Media and Creatives,30-06-2025,"7,50,000",67500,67500,,135000,885000,,,,,,,,Social Media and Creatives,For the month of June 2025,"7,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2506INV004,CL127,,WT,Masala Darbar - Name and Logo,30-06-2025,"80,000",7200,7200,,14400,94400,,,,,,,,Masala Darbar,Naming and Logo Design,"80,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2506INV005,CL147,,WT,SAS Crown - Marketing,30-06-2025,"2,50,000",22500,22500,,45000,295000,,,,,,,,Marketing,For the month of July 2025,"2,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2506INV006,CL063,,WT,Real Insights - Social Media,30-06-2025,"1,51,800",13662,13662,,27324,179124,,,,,,,,Social Media Marketing,Jul-25,"1,50,000",Performance Marketing,Service Fee,1800,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2506INV007,CL039,,WT,NTR TRUST and Bhuvaneswari garu - Social Media Marketing,30-06-2025,"1,00,000",9000,9000,,18000,118000,,,,,,,,Social Media,NTR Trust - June 2025,"1,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2506INV009,CL004,,WT,Beauty - Creatives (Advance invoice),20-06-2025,"2,50,000",,0,45000,45000,295000,,,,,,,,Beauty Creatives,"Advance - 50% (10 Main Posters and
+adapts and Lyrical Videos)","2,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2507INV002,CL149,,WT,Mass Jathara Lyricals,09-07-2025,"87,000",7830,7830,,15660,102660,,,,,,,,Lyrical Videos,Mass Jathara - Tu Mera Lover - Lyrical,"75,000",Shoot,Opening Ceremony Shoot,12000,,,,,,,,,,,,,,,,,,,,,,,,
+WT2507INV005,CL101,,WT,Andhra King Taluka Lyrical Video,16-07-2025,"1,50,000",13500,13500,,27000,177000,,,,,,,,Lyrical Video,First song,"1,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2507INV006,CL156,,WT,HHVM - Marketing Balance,16-07-2025,"4,00,000",36000,36000,,72000,472000,,,,,,,,Marketing,"Marketing - 7L (till July 24th 2025) - 3L
+advance Paid and 4L balance.","4,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2507INV012,CL130,,WT,AOT - Meme Campaigns,31-07-2025,"1,25,000",11250,11250,,22500,147500,,,,,,,,Meme Marketing,Top 32 Pages,"65,000",Music Pages,Top 100 Pages,60000,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2507INV001,CL037,,WTX,Star Maa - Social Media and Creatives,30-07-2025,"7,50,000",67500,67500,,135000,885000,,,,,,,,Social Media and Creatives,For the month of July 2025,"7,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2507INV002,CL147,,WTX,SAS Crown - Marketing,30-07-2025,"2,50,000",22500,22500,,45000,295000,,,,,,,,Marketing,For the month of August 2025,"2,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2507INV003,CL063,,WTX,Real Insights - Social Media,30-07-2025,"1,51,000",13590,13590,,27180,178180,,,,,,,,Social Media Marketing,Aug-25,"1,50,000",Performance Marketing,Service Fee,1000,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2507INV004,CL039,,WTX,NTR TRUST and Bhuvaneswari garu - Social Media Marketing,30-07-2025,"1,00,000",9000,9000,,18000,118000,,,,,,,,Social Media,NTR Trust - July 2025,"1,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2507INV005,CL128,,WTX,ART - Branding Balance,30-07-2025,"96,000",8640,8640,,17280,113280,,,,,,,,Marketing,Jul-25,"85,000",Paid Marketing,Jul-25,11000,,,,,,,,,,,,,,,,,,,,,,,,
+WT2507INV009,CL095,,WT,Mirai - Lyrical Video - Vibe undi,29-07-2025,"1,50,000",13500,13500,,27000,177000,,,,,,,,Lyrical Video - Vibe undi song,"1 original language + 4 additional
+languages","1,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2507INV010,CL095,,WT,Thelusu Kadha - Lyrical Video - Mallika Gandha,29-07-2025,"1,00,000",9000,9000,,18000,118000,,,,,,,,Lyrical Video - Mallika Gandha song,,"1,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2507INV011,CL125,,WT,Parada Lyrical Songs,31-07-2025,"75,000",6750,6750,,13500,88500,,,,,,,,Lyrical Video,Third song,"75,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2508INV002,CL070,,WT,Durga Arts - Workspace Expenses,11-08-2025,"2,96,136",26652.24,26652.24,,53304.48,349440.48,,,,,,,,Workspace,April 1st 2025 to July 31st 2025,"2,96,136",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2508INV003,CL129,,WT,Arka Media Works - Workspace Expenses,11-08-2025,"65,650",5908.5,5908.5,,11817,77467,,,,,,,,Workspace,March 1st 2025 to July 31st 2025,"65,650",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2508INV005,CL034,,WT,Shruti Haasan Marketing,14-08-2025,"1,20,000",,0,21600,21600,141600,,,,,,,,Meme Marketing,,"1,20,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2508INV001,CL048,,WTX,Vijetha - AD Space Video,14-08-2025,"50,000",4500,4500,,9000,59000,,,,,,,,AD space video,,"50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2508INV002,CL037,,WTX,Star Maa - Social Media and Creatives,26-08-2025,"7,50,000",67500,67500,,135000,885000,,,,,,,,Social Media and Creatives,For the month of August 2025,"7,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2508INV003,CL063,,WTX,Real Insights - Social Media,30-08-2025,"1,51,000",13590,13590,,27180,178180,,,,,,,,Social Media Marketing,Sep-25,"1,50,000",Performance Marketing,Service Fee,"1,000",,,,,,,,,,,,,,,,,,,,,,,,
+WTX2508INV004,CL039,,WTX,NTR TRUST and Bhuvaneswari garu - Social Media Marketing,30-08-2025,"1,00,000",9000,9000,,18000,118000,,,,,,,,Social Media,NTR Trust - August 2025,"1,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2508INV005,CL128,,WTX,Asian Raviteja Cinemas LLP,30-08-2025,"85,000",7650,7650,,15300,100300,,,,,,,,Marketing,Aug-25,"85,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2508INV006,CL170,,WTX,Vindour Social Media Marketing,30-08-2025,"66,700",6003,6003,,12006,78706,,,,,,,,Marketing,Sep-25,"66,700",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2508INV007,CL147,,WTX,SAS Crown - Marketing,30-08-2025,"2,50,000",22500,22500,,45000,295000,,,,,,,,Marketing,For the month of September 2025,"2,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2507INV013,CL135,,WT,Kishkindapuri Lyrical Videos,30-07-2025,"70,000",6300,6300,,12600,82600,,,,,,,,Lyrical Videos,Undipo Nathone Song Name,"70,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2509INV001,CL017,,WT,MegaBobby - Influencer Marketing,02-09-2025,"1,00,000",9000,9000,,18000,118000,,,,,,,,Influencers marketing,North Twitter Influencers - 1 Asset,"1,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2509INV002,CL101,,WT,Andhra King Taluka Lyrical Video,02-09-2025,"1,50,000",13500,13500,,27000,177000,,,,,,,,Lyrical Video,Puppy shame song,"1,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2509INV004,CL232,,WT,Naveen Polisetty Marketing,08-09-2025,"3,00,000",27000,27000,,54000,354000,,,,,,,,Meme Marketing,,"3,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2409INV007,CL115,,WT,Baahubali - YouTube Ads,12-09-2025,"5,00,000",45000,45000,,90000,590000,,,,,,,,YouTube Ads,,"5,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2509INV008,CL077,,WT,Lyricals - OMI Song,15-09-2025,"1,50,000",13500,13500,,27000,177000,,,,,,,,Lyrical Video Composition,OG OMI Song,"1,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2509INV009,CL077,,WT,Lyricals - Guns N Roses Song,15-09-2025,"1,50,000",13500,13500,,27000,177000,,,,,,,,Lyrical Video Composition,OG Guns N Roses Song,"1,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2509INV010,CL004,,WT,Beauty - Creatives + Promos Invoice,15-09-2025,"6,00,000",54000,54000,,108000,708000,,,,,,,,Beauty Creatives,"Balance - 50% (10 Main Posters and
+adapts and Lyrical Videos)","2,50,000",Beauty Promos,"Business cut, Promos - Teasers, Trailer
+and promo cut downs",350000,,,,,,,,,,,,,,,,,,,,,,,,
+WT2509INV011,CL077,,WT,Lyricals - Washi O Washi Song,20-09-2025,"1,50,000",13500,13500,,27000,177000,,,,,,,,Lyrical Video Composition,OG Washi O Washi Song,"1,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2509INV012,CL077,,WT,OG Making,20-09-2025,"3,50,000",31500,31500,,63000,413000,,,,,,,,Making Video Production,OG BTS,"3,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2509INV013,CL077,,WT,Publicity Posters Designing,20-09-2025,"5,50,000",49500,49500,,99000,649000,,,,,,,,Publicity Poster Designs,OG posters,"5,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2509INV016,CL077,,WT,Lyricals - Item Song,20-09-2025,"1,50,000",13500,13500,,27000,177000,,,,,,,,Lyrical Video Composition,OG Item Song,"1,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2509INV018,CL233,,WT,Lyricals - Girl Friend,30-09-2025,"1,00,000",9000,9000,,18000,118000,,,,,,,,Lyrical Video Composition,Girl Friend song 1,"1,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WT2509INV019,CL124,,WT,JNR Show - Creative Direction,30-09-2025,"2,00,000",18000,18000,,36000,236000,,,,,,,,JNR Show - Creative Direction,,"2,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2509INV002,CL037,,WTX,"Star Maa - shoots, lyrical video and T shirts - Bigg Boss",12-09-2025,"1,99,300",17937,17937,,35874,235174,,,,,,,,Content video production,,"40,800",Vox pop,,8500,T shirts,,100000,Lyrical video,,50000,,,,,,,,,,,,,,,,,,
+WTX2509INV003,CL234,,WTX,Megha Engineering and Infrastructures,23-09-2025,"4,56,250",41062.5,41062.5,,82125,538375,,,,,,,,Marketing Fee,"Ideation, creatives, shoots and edits -
+includes 1 to 2 social media creatives
+(static or reel) everyday and total of 5
+shoots by 1 camera person for social
+media reels purpose","2,50,000",Performance Marketing,Hyderabad Meta and LinkedIn Ads,187500,Service Fee for Performance,,18750,,,,,,,,,,,,,,,,,,,,,
+WTX2509INV004,CL037,,WTX,JIOSTAR INDIA PRIVATE LIMITED,25-09-2025,"7,50,000",67500,67500,,135000,885000,,,,,,,,Social Media and Creatives,For the month of Sep 2025,"7,50,000",,,,Marketing,,,,,,,,,,,,,,,,,,,,,,,
+WTX2509INV006,CL039,,WTX,NTR TRUST and Bhuvaneswari garu - Social Media Marketing,30-09-2025,"1,00,000",9000,9000,,18000,118000,,,,,,,,Social Media,NTR Trust - Sep 2025,"1,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2509INV007,CL128,,WTX,ART - Marketing,30-09-2025,"85,000",7650,7650,,15300,100300,,,,,,,,Marketing,For the month of September 2025,"85,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2509INV008,CL147,,WTX,SAS Crown - Marketing,30-09-2025,"2,50,000",22500,22500,,45000,295000,,,,,,,,Marketing,For the month of September 2025,"2,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2509INV009,CL235,,WTX,Kelvin Scale Creamery - Website and Branding,30-09-2025,"3,50,000",31500,31500,,63000,413000,,,,,,,,Branding and Website,Advance,"3,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTX2509INV010,CL235,,WTX,Kelvin Scale Creamery - Website and Branding,30-09-2025,"1,00,000",9000,9000,,18000,118000,,,,,,,,Branding and Website,Balance,"1,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTPL2504INV001,CL182,,WTPL,T-Series South - Social Media,30-04-2025,"1,30,000",,,23400,23400,153400,,,,,,,,Social Media Marketing,,"1,30,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2410INV009,CL226,,WTXPL,Nehru Zoological Park Marketing,30-10-2024,"83,000",7470,7470,,14940,97940,,,,,,,,"Social Media Marketing - October
+2024 - Payment","Strategy, content creation and postings.
+15 creative assets per month.","83,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2411INV006,CL226,,WTXPL,Nehru Zoological Park Marketing,30-09-2024,"83,000",7470,7470,,14940,97940,,,,,,,,"Social Media Marketing - October
+2024 - Payment","Strategy, content creation and postings.
+15 creative assets per month.","83,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2502INV004,CL114,,WTXPL,AMB - Social Media,28-02-2025,"1,25,000",11250,11250,,22500,147500,,,,,,,,Social Media Marketing,Feb-25,"1,25,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2502INV005,CL220,,WTXPL,AAA - Social Media,28-02-2025,"75,000",6750,6750,,13500,88500,,,,,,,,Social Media Marketing,Feb-25,"75,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2503INV001,CL186,,WTXPL,ATM - Social Media,28-03-2024,"80,000",,,14400,14400,94400,,,,,,,,Social Media Marketing,Mar-25,"80,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2504INV001,CL186,,WTXPL,ATM - Social Media,30-04-2024,"80,000",,0,14400,14400,94400,,,,,,,,Social Media Marketing,Apr-25,"80,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2504INV002,CL198,,WTXPL,Social Media Marketing for Prasads Multiplex Mall,30-04-2024,"60,000",5400,5400,,10800,70800,,,,,,,,Social Media,Marketing for April 2025,"60,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2504INV003,CL005,,WTXPL,Pen India - Social Media,30-04-2024,"1,00,000",,,18000,18000,118000,,,,,,,,Social Media Marketing,Apr-25,"1,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2504INV009,CL225,,WTXPL,Snow Station - Social Media,30-04-2024,"60,000",,,10800,10800,70800,,,,,,,,Social Media Marketing,May-25,"60,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2502INV006,CL224,,WTXPL,Revive - Social Media,28-02-2025,"90,000",8100,8100,,16200,106200,,,,,,,,Social Media,March 2025 - Prepaid,"90,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2502INV009,CL193,,WTXPL,MeeSeva - Social Media,28-02-2025,"1,55,000",13950,13950,,27900,182900,,,,,,,,Social Media,Feb-25,"1,55,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2503INV006,CL224,,WTXPL,Revive - Social Media,28-03-2025,"90,000",8100,8100,,16200,106200,,,,,,,,Social Media,April 2025 - Prepaid,"90,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2503INV008,CL193,,WTXPL,MeeSeva - Social Media,28-03-2025,"1,55,000",13950,13950,,27900,182900,,,,,,,,Social Media,Mar-25,"1,55,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2504INV004,CL114,,WTXPL,AMB - Social Media,30-04-2025,"1,52,500",13725,13725,,27450,179950,,,,,,,,Social Media Marketing,Apr-25,"1,50,000",Social Media Advertising,Paid Ads in April 2025,2500,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2504INV006,CL224,,WTXPL,Revive - Social Media,30-04-2025,"90,000",8100,8100,,16200,106200,,,,,,,,Social Media,May 2025 - Prepaid,"90,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2504INV008,CL193,,WTXPL,MeeSeva - Social Media,30-04-2025,"1,55,000",13950,13950,,27900,182900,,,,,,,,Social Media,Apr-25,"1,55,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2505INV002,CL198,,WTXPL,Prasad Media Corporation Private Limited,30-05-2025,"60,000",5400,5400,,10800,70800,,,,,,,,Social Media,Marketing for May 2025,"60,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2505INV003,CL005,,WTXPL,Pen India - Social Media,30-05-2025,"1,00,000",9000,9000,,18000,118000,,,,,,,,Social Media Marketing,May-25,"1,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2505INV004,CL114,,WTXPL,AMB - Social Media,30-05-2025,"1,50,000",13500,13500,,27000,177000,,,,,,,,Social Media Marketing,May-25,"1,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2505INV005,CL220,,WTXPL,AAA - Social Media,30-05-2025,"75,000",6750,6750,,13500,88500,,,,,,,,Social Media Marketing,May-25,"75,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2505INV006,CL224,,WTXPL,Revive - Social Media,30-05-2025,"91,100",8199,8199,,16398,107498,,,,,,,,Social Media,June 2025 - Prepaid,"90,000",Performance Marketing,Service Charge - May 2025,1100,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2505INV008,CL193,,WTXPL,MeeSeva - Social Media,,"2,18,800",19692,19692,,39384,258184,,,,,,,,Social Media Marketing,May-25,"1,55,000",Performance Marketing,"Budget Added (Spent) - Mee Seva Insta -
+20,000(7,000) Mee Ticket Insta - 20,000
+(15,000) T Wallet Insta - 20,000 (16,000)",60000,Performance Marketing,Service Charge - 10%,3800,,,,,,,,,,,,,,,,,,,,,
+WTXPL2505INV009,CL225,,WTXPL,Snow Station - Social Media,,"60,000",,,10800,10800,70800,,,,,,,,Social Media Marketing,Jun-25,"60,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTPL2506INV001,CL188,,WTPL,Lyrical Videos Editing for MRT Music,30-06-2025,"5,86,667",,0,105600,105600,692267,,,,,,,,Lyrical Videos Editing,200 songs delivered - Jan 2024,"3,66,667",Lyrical Videos Editing,120 songs delivered - Feb 2024,220000,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2506INV002,CL005,,WTXPL,Pen India - Social Media,30-06-2025,"1,00,000",,,18000,18000,118000,,,,,,,,Social Media Marketing,Jun-25,"1,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2506INV003,CL114,,WTXPL,AMB - Social Media,30-06-2025,"1,50,000",13500,13500,,27000,177000,,,,,,,,Social Media Marketing,Jun-25,"1,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2506INV004,CL220,,WTXPL,AAA - Social Media,30-06-2025,"75,000",6750,6750,,13500,88500,,,,,,,,Social Media Marketing,Jun-25,"75,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2506INV005,CL224,,WTXPL,Revive - Social Media,30-06-2025,"91,300",8217,8217,,16434,107734,,,,,,,,Social Media,July 2025 - Prepaid,"90,000",Performance Marketing,Service Charge - June 2025,1300,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2506INV008,CL225,,WTXPL,Snow Station - Social Media,30-06-2025,"60,500",,,10890,10890,71390,,,,,,,,Social Media Marketing,Jul-25,"60,000",Performance Marketing,Service Charge - June 2025,500,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2506INV009,CL193,,WTXPL,MeeSeva - Social Media,30-06-2025,"1,55,000",13950,13950,,27900,182900,,,,,,,,Social Media,Jun-25,"1,55,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTPL2507INV001,CL077,,WTPL,Social Media Marketing for DVV Entertainment,30-07-2025,"1,75,000",15750,15750,,31500,206500,,,,,,,,Social Media,Marketing for Jul 2025,"1,75,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2503INV005,CL220,,WTXPL,AAA - Social Media,28-03-2025,"80,000",7200,7200,,14400,94400,,,,,,,,Social Media Marketing,Apr-25,"75,000",Social Media Ads,Paid Ads in April 2025,5000,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2507INV001,CL198,,WTXPL,Social Media Marketing for Prasads Multiplex Mall,30-07-2025,"60,000",5400,5400,,10800,70800,,,,,,,,Social Media,Marketing for July 2025,"60,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2507INV002,CL005,,WTXPL,Pen India - Social Media,30-07-2025,"1,00,000",,0,18000,18000,118000,,,,,,,,Social Media Marketing,Jul-25,"1,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2507INV003,CL114,,WTXPL,AMB - Social Media,30-07-2025,"1,75,000",15750,15750,,31500,206500,,,,,,,,Social Media Marketing,Jul-25,"1,75,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2507INV004,CL220,,WTXPL,AAA - Social Media,30-07-2025,"75,000",6750,6750,,13500,88500,,,,,,,,Social Media Marketing,Jul-25,"75,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2507INV006,CL225,,WTXPL,Snow Station - Social Media,30-07-2025,"60,600",5454,5454,,10908,71508,,,,,,,,Social Media Marketing,Aug-25,"60,000",Performance Marketing,Service Charge - July 2025,600,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2507INV007,CL193,,WTXPL,MeeSeva - Social Media,30-07-2025,"1,55,000",13950,13950,,27900,182900,,,,,,,,Social Media,Jul-25,"1,55,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2507INV008,CL224,,WTXPL,Revive - Social Media,30-07-2025,"92,900",8361,8361,,16722,109622,,,,,,,,Social Media,August 2025 - Prepaid,"90,000",Performance Marketing,Service Charge - June and July 2025,2900,,,,,,,,,,,,,,,,,,,,,,,,
+WTPL2508INV001,CL003,,WTPL,YRF - Telugu Influencer Marketing - War 2,03-08-2025,"15,00,000",,,,"2,70,000",1770000,,,,,,,,Influencer marketing,"Aavan Jaavan Telugu song - 70
+profiles","15,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTPL2508INV002,CL187,,WTPL,Kingdom Shoot,08-08-2025,"19,86,435",,,"3,57,558",357558,2343993,,,,,,,,"Creative Marketing-Shoot-External
+Photo & Video Shoot
+Line Memo","Marketing Production-Shoots
+(MCP)-External Photo & Video
+Shoot
+Project : Kingdom | Memo : Marketing
+Shoot Cost and Entourage Fees","19,86,435",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTPL2508INV003,CL003,,WTPL,YRF - Telugu Music Pages Marketing - War 2,08-08-2025,"3,00,000",,,54000,54000,354000,,,,,,,,Music Pages marketing,200 Pages,"3,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTPL2508INV004,CL077,,WTPL,Social Media Marketing for DVV Entertainment,30-08-2025,"1,75,000",15750,15750,,31500,206500,,,,,,,,Social Media,Marketing for August 2025,"1,75,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2508INV001,CL193,,WTXPL,MeeSeva - Influencers Marketing,08-08-2025,"1,60,000",14400,14400,,28800,188800,,,,,,,,Influencer Marketing,,"1,60,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2508INV002,CL198,,WTXPL,Social Media Marketing for Prasads Multiplex Mall,30-08-2025,"60,000",5400,5400,,10800,70800,,,,,,,,Social Media,Marketing for August 2025,"60,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2508INV003,CL005,,WTXPL,Pen India - Social Media,30-08-2025,"1,00,000",,,18000,18000,118000,,,,,,,,Social Media,Marketing for August 2025,"1,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2508INV004,CL114,,WTXPL,AMB - Social Media,30-08-2025,"1,75,000",15750,15750,,31500,206500,,,,,,,,Social Media Marketing,Aug-25,"1,75,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2508INV005,CL220,,WTXPL,AAA - Social Media,30-08-2025,"75,000",6750,6750,,13500,88500,,,,,,,,Social Media Marketing,Aug-25,"75,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2508INV007,CL225,,WTXPL,Snow Station - Social Media,30-08-2025,"1,00,000",,0,18000,18000,118000,,,,,,,,Social Media Marketing,Aug-25,"60,000",Branding,Billboard and Brochure designs,40000,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2508INV008,CL193,,WTXPL,MeeSeva - Social Media,30-08-2025,"1,55,000",13950,13950,,27900,182900,,,,,,,,Social Media,Aug-25,"1,55,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTPL2509INV001,CL077,,WTPL,Social Media Marketing for DVV Entertainment,30-09-2025,"1,75,000",15750,15750,,31500,206500,,,,,,,,Social Media,Marketing for August 2025,"1,75,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTPL2509INV002,CL187,,WTPL,War2 Shoot,30-09-2025,"4,50,000",,0,81000,81000,531000,,,,,,,,"Creative Marketing-Shoot-External
+Photo & Video Shoot
+Line Memo","Marketing Production-Shoots
+(MCP)-External Photo & Video
+Shoot
+Project : War2 | Memo : Marketing Shoot
+Cost and Entourage Fees","4,50,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2509INV001,CL198,,WTXPL,Social Media Marketing for Prasads Multiplex Mall,30-09-2025,"60,000",5400,5400,,10800,70800,,,,,,,,Social Media,Marketing for Sep 2025,"60,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2509INV002,CL005,,WTXPL,Pen India - Social Media,30-09-2025,"1,00,000",,,18000,18000,118000,,,,,,,,Social Media Marketing,Sep-25,"1,00,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2509INV003,CL114,,WTXPL,AMB - Social Media,30-09-2025,"1,75,000",15750,15750,,31500,206500,,,,,,,,Social Media Marketing,Sep-25,"1,75,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2509INV004,CL220,,WTXPL,AAA - Social Media,30-09-2025,"75,000",6750,6750,,13500,88500,,,,,,,,Social Media Marketing,Sep-25,"75,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2509INV006,CL225,,WTXPL,Snow Station - Social Media,30-09-2025,"60,000",,,10800,10800,70800,,,,,,,,Social Media Marketing,Oct-25,"60,000",,,,,,,,,,,,,,,,,,,,,,,,,,,
+WTXPL2509INV007,CL193,,WTXPL,MeeSeva - Social Media,30-09-2025,"1,55,000",13950,13950,,27900,182900,,,,,,,,Social Media,Sep-25,"1,55,000",,,,,,,,,,,,,,,,,,,,,,,,,,,

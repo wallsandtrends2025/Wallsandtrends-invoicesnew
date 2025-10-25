@@ -30,7 +30,8 @@ import AuditManager from "./components/AuditManager";
 import POCSignup from "./components/POCSignup";
 import AllPOCs from "./components/AllPOCs";
 import EditPOC from "./components/EditPOC";
-import PreviewPOC from "./components/PreviewPOC"
+import PreviewPOC from "./components/PreviewPOC";
+import ImportClients from "./components/ImportClients";
 // import InvoicePreviewTest from "./components/InvoicePreviewTest"; // Component not found
 
 
@@ -72,6 +73,7 @@ export default function App() {
         <Route path="home" element={<Home />} />
         <Route path="add-client" element={<ClientSignup />} />
         <Route path="all-clients" element={<AllClients />} />
+        <Route path="import-clients" element={<ImportClients />} />
         <Route path="edit-client/:id" element={<EditClient />} />
         <Route path="create-invoice" element={<CreateInvoice />} />
         <Route path="all-invoices" element={<AllInvoices />} />
