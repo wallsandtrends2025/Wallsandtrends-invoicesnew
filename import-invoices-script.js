@@ -5,7 +5,7 @@ import fs from 'fs';
 const serviceAccount = JSON.parse(fs.readFileSync('./serviceAccountKey.json', 'utf8'));
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  projectId: 'wt-invoices'
+  projectId: 'invoice-new-6a045'
 });
 
 const db = admin.firestore();

@@ -5,12 +5,13 @@ import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAoVDfwji6ueGndkRANbCeAx93PVu9BqZU",
-  authDomain: "wt-invoices.firebaseapp.com",
-  projectId: "wt-invoices",
-  storageBucket: "wt-invoices.appspot.com",
-  messagingSenderId: "6264858046",
-  appId: "1:6264858046:web:ab835097cb4d0b5ebc45ef"
+  apiKey: "AIzaSyDf-Brx4neulc5Qfz9y0gADrkLogfyP52g",
+  authDomain: "invoice-new-6a045.firebaseapp.com",
+  projectId: "invoice-new-6a045",
+  storageBucket: "invoice-new-6a045.firebasestorage.app",
+  messagingSenderId: "252788260766",
+  appId: "1:252788260766:web:b57a809434697025fda08f",
+  measurementId: "G-HGGR4HMDXM"
 };
 
 // Initialize Firebase
