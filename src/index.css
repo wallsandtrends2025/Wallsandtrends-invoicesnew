@@ -1,0 +1,192 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+@font-face {
+    font-family: 'Optima';
+    font-style: normal;
+    font-weight: normal;
+    src: local('Optima'), url('/fonts/optima/OPTIMA.woff') format('woff');
+    }
+@font-face {
+    font-family: 'Calibri';
+    src: url('/fonts/calibri/Calibri.woff2') format('woff2'),
+        url('/fonts/calibri/Calibri.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Milford';
+    src: url('/fonts/milford/Milford.woff2') format('woff2'),
+        url('/fonts/milford/Milford.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+body {
+   font-family: 'Calibri';
+  margin: 0;
+}
+
+.border {
+  border-style: var(--tw-border-style);
+  border-width: 1px;
+  height: 40px;
+  margin: 10px 0;
+  border-radius: 0px;
+  border-color: #AAAAAA;
+}
+.w-full {
+  width: 100%;
+  max-width: 600px;
+}
+.button-submit{ height: 50px;color: #ffffff;background: #0e224f;}
+.form-input-custom {
+  width: 100% !important;
+  max-width: 500px;
+  height: 50px;
+  padding: 0 10px;
+  margin: 10px 0;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.buttonswt{margin: 10px;}
+.create-invoice{text-decoration: none;line-height: 35px;height: 35px;}
+.font-inter{padding: 20px;}
+form input{ width: 100% !important;}
+form textarea{ width: 100% !important;}
+.preview{    max-width:600px;margin: 0 auto;border-radius: 5px;padding: 20px;}
+.preview h1{font-family: 'Optima';}
+.downloadbtn{    width: 220px;
+    margin: 0px auto 30px;
+    display: block;border:1px solid #ffffff;height: 50px;line-height: 50px;right: 0;left: auto;top:134px;cursor: pointer;}
+    .downloadbtn2{top: 190px;}
+    .downloadbtn3{right: 0 !important;top: 38.3%;left: auto;}
+.preview img{width: 75px;}
+.address p{font-size: 10px;margin: 4px 0;}
+.invoicetotal{margin: 10px 0;}
+.loginform{width: 500px;}
+.loginform button{height: 40px;margin: 15px 0 0 ;cursor: pointer;}
+.dashboard-block{padding: 30px;background: #3b5999;color: #ffffff;}
+.dashboard-block a{color: #ffffff;margin:10px 0;text-decoration: none;}
+.all-invoices{padding:30px;overflow-x: visible;}
+.all-clients{padding:50px;overflow-x: visible;}
+.edit-invoice{padding:30px;}
+.edit-client{padding:30px;}
+.dashboard-block-in{border-right: 1px solid #fff;padding: 20px;}
+.dashboard-block-in button{margin:10px 0;}
+.logout{width: 100%;}
+header{padding:20px;box-shadow: 1px 1px 15px #cccccc;width:100%;}
+header a{padding: 0 10px;}
+header .drop-down{background: transparent;border: 0;cursor: pointer;}
+.invoices-logo{font-size: 30px ;}
+nav a{color: #000000;text-decoration: none;font-size: 15px;}
+nav .drop-down{color: #000000;text-decoration: none;font-size: 15px;}
+.banner-bg{background-image: url(/public/banner.png);
+    width: 100%;
+    height: auto;
+    background-size: cover;
+    padding: 250px 0;
+    background-position: right;}
+    .editpopup{background-image: url(/src/assets/edit-popup-bg.png);
+       width: auto;
+    height: auto;
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    padding: 8px;
+    display: block;
+    text-align: center;}
+    .editpopup button{width: 75px;}
+.banner-bg h1{margin: 0;}
+nav .drop-down a{padding:0 10px;}
+.all-clients table{padding:0;width: 80%;}
+.edit{margin: 5px;display: inline-block;width: 100px;background: #355088;color: #ffffff;padding: 5px;border-radius: 5px;}
+.logout{display: inline-block;width: 100px;background: #037f9e;color: #ffffff;padding: 5px;border-radius: 5px;}
+.dropdown:hover .dropdown-content {display: block;}
+.invoice-summary{padding:20px;}
+.invoice-summary-cnt{padding: 0 10px;}
+.invoice-summary-cnt select{margin: 0;}
+.generate-btn{height: 40px;line-height: 40px;display: block;margin:0 10px;background: #037c9b;color: #ffffff;border-radius: 5px;}
+.invoice-summary-cnt input{margin: 0;}
+.all-invoices table{padding: 0;border: 0;}
+.edit-invoice{padding: 30px;}
+.edit-client{padding: 30px;}
+.save-changes-btn{height: 50px;width: 150px;border: 0;border-radius: 10px;margin: 10px 0 0;}
+.signup-btn{height: 40px;margin:10px 0 0;}
+.select-dd{margin:0;}
+.edit-invoice-btn{margin: 5px;}
+.preview{font-family: 'Calibri';}
+.bank-details{font-family: 'Optima';}
+.thank-you-text{font-family: 'Milford';}
+.authorised-text{padding: 5px 0;margin: 10px 0 0;}
+.all-projects-block{padding: 30px;overflow-x: visible;}
+.update-project-btn{margin: 30px auto;background: #1f2937;color: #fff;height: 50px;font-weight: 600;cursor: pointer;display: block;border-radius: 5px;padding: 0 15px;}
+.bar-colour{color: #ffffff;padding: 10px;}
+.menu-block{width: 100%;height: 100%;padding:30px;}
+.close-menu-btn{position: absolute;right: 80px;}
+.menu-block .w-full{max-width: 88%;}
+nav .relative{padding: 0 10px;}
+nav .relative a{background: #ffffff;} 
+.pdf-manager-block{padding: 30px;width: 94%;margin: 70px 0 0 0;position: relative;}
+.back-btn{position: absolute;left: 0;top: -45px;}
+.home-block{padding:0 0 20px;}
+.bottons-block{right: 0;}
+.edit-invoice-payment{padding: 40px 0 0;}
+.login-form{height: auto;padding: 30px;}
+.login-form div{margin: 30px 0;border-radius: 40px;height: 50px;}
+.login-form .login-icon{background: #ffffff;padding: 5px;border-radius: 5px;}
+.divider-line{margin:0 10px;background-color: #000000;} 
+nav a{background-color: transparent;border: 0;padding: 12px !important;font-size: 18px !important;}
+nav button{background-color: transparent;border: 0;padding: 12px !important;font-size: 16px !important;}
+#submenu-client a, #submenu-project a, #submenu-proforma a, #submenu-invoice a{padding:12px 12px 12px 30px !important;}
+.rounded-box{border-radius: 10px;}
+.border-curve{border-radius: 10px;}
+.form-block label{font-weight:600;}
+.form-block textarea{padding: 10px;}
+.table-height{height:500px !important;}
+.blue-profile{padding: 5px 0px !important;}
+.sidebar{left: 0 !important;top: 0 !important;z-index: 99999 !important;background: linear-gradient(1deg,rgba(59, 89, 151, 1) 0%, rgba(255, 222, 85, 1) 100%);}
+.sidebar a{color: #ffffff;}
+.sidebar span{color: #ffffff;}
+#submenu-client div:hover span{color: #3b5997;}
+.admin-block{width: 100%;display: block;text-align: right;color: #ffffff;margin-right: 30px; }
+.admin-block button{margin-left: auto;margin-right: 0;margin-top: 10px;cursor: pointer;border: 0;}
+.admin-in-block {height: 38px;border-radius: 5px;background: #ffffff;}
+.menu-bar{display: none;}
+main{margin:0 0 0 290px;}
+.menu-three{border-radius: 5px !important;border: 0;cursor: pointer;}
+input{border:1px solid #AAAAAA !important;}
+textarea{border:1px solid #AAAAAA !important;}
+select{border:1px solid #AAAAAA !important;}
+.sidebar span{font-size: 14px;} 
+table{border: 1px solid #AAAAAA;}
+.rs__control input{border:0 !important;}
+.link-poject-field input{border:0 !important;}
+.services-block input{border: 0 !important;}
+.sidebar svg{color: #ffffff;}
+.width-btn{width: 100px;}
+.total-amount{height:170px;}
+@media (max-width:1300px){select{font-size: 13px;
+    padding: 4px !important;}}
+@media (max-width:1200px){
+  nav .relative{padding: 0 5px;color: #ffffff;}
+  nav .relative button{font-size: 11px;}
+  nav a{font-size: 11px;}
+}
+@media (max-width:767px) {
+  .sidebar{display:none;}
+  .loginform {width: 300px;}
+
+  .w-full{max-width: 100%;}
+  .menu-bar{display: block; }
+  main{margin: 0;}
+  .open-sidebar{width: 100%; top:90px;background: linear-gradient(1deg,rgba(59, 89, 151, 1) 0%, rgba(255, 222, 85, 1) 100%);color: #ffffff;}
+  .grid{display: block;}
+  .form-block textarea{width: 95% !important;}
+
+}
