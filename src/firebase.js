@@ -3,6 +3,7 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
+import { initializeAppCheck } from "firebase/app-check";
 
 // Secure environment-based configuration
 const firebaseConfig = {
@@ -31,6 +32,25 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+
+// Initialize Firebase Functions (for server-side email/SMS sending)
+import { getFunctions } from 'firebase/functions';
+export const functions = getFunctions(app);
+
+// App Check configuration - Temporarily disabled to fix reCAPTCHA issues
+// Will be re-enabled once proper reCAPTCHA keys are configured
+if (import.meta.env.VITE_ENABLE_APP_CHECK === 'true') {
+  try {
+    const { ReCaptchaV3Provider } = await import('firebase/app-check');
+    const appCheck = initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(import.meta.env.VITE_RECAPTCHA_SITE_KEY),
+      isTokenAutoRefreshEnabled: true
+    });
+    console.log('App Check initialized successfully');
+  } catch (error) {
+    console.warn('App Check initialization failed:', error.message);
+  }
+}
 
 // Export app for potential future use
 export { app };

@@ -4,6 +4,8 @@ import { db } from "../firebase";
 import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import CurrencyService from "../utils/CurrencyService";
+import { permissionGuard, usePermission } from "../utils/permissionGuard";
+import { authService } from "../utils/authService.jsx";
 
 export default function AllInvoices() {
   const [invoices, setInvoices] = useState([]);
@@ -53,18 +55,65 @@ export default function AllInvoices() {
     return <span className={`${baseClass} bg-gray-100 text-gray-800`}>—</span>;
   };
 
-  // --- data load ---
+  // Helper function to filter invoices based on permissions
+  const filterInvoicesByPermission = async (invoiceList) => {
+    const user = authService.getCurrentUser();
+    if (!user) return [];
+
+    // If user is admin or super admin, show all invoices
+    if (authService.isAdmin()) {
+      return invoiceList;
+    }
+
+    // For regular users, filter based on ownership or department access
+    const filtered = [];
+    for (const invoice of invoiceList) {
+      try {
+        const hasAccess = await permissionGuard.checkResourceAccess(
+          'invoice',
+          invoice.id,
+          'read',
+          invoice
+        );
+        if (hasAccess) {
+          filtered.push(invoice);
+        }
+      } catch (error) {
+        // Skip invoices that can't be accessed
+        continue;
+      }
+    }
+
+    return filtered;
+  };
+
+  // --- data load with permission check ---
   useEffect(() => {
     const fetchInvoices = async () => {
-      setLoading(true);
       try {
+        // Check permission to read invoices
+        await permissionGuard.requirePermission('READ_INVOICE');
+
+        setLoading(true);
         const snapshot = await getDocs(collection(db, "invoices"));
         const invoiceList = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setInvoices(invoiceList);
+
+        // Filter invoices based on user permissions
+        const filteredInvoices = await filterInvoicesByPermission(invoiceList);
+
+        setInvoices(filteredInvoices);
         setPage(1);
-      } catch (e) {
-        console.error("Error loading invoices:", e);
-        alert("Error loading invoices");
+      } catch (error) {
+        if (error.name === 'PermissionError') {
+          logger.warn('Permission denied for reading invoices', {
+            userId: authService.getCurrentUser()?.uid,
+            error: error.message
+          });
+          alert("Access denied: You don't have permission to view invoices.");
+        } else {
+          logger.error('Error loading invoices', { error: error.message });
+          alert("Error loading invoices: " + error.message);
+        }
       } finally {
         setLoading(false);
       }
@@ -132,11 +181,43 @@ export default function AllInvoices() {
     [sorted, isShowAll, startIdx, endIdx]
   );
 
-  // --- actions ---
+  // --- actions with permission checks ---
   const handleDelete = async (id) => {
-    if (window.confirm("Are you sure you want to delete this invoice?")) {
-      await deleteDoc(doc(db, "invoices", id));
-      setInvoices((prev) => prev.filter((inv) => inv.id !== id));
+    try {
+      // Check permission to delete invoices
+      await permissionGuard.requirePermission('DELETE_INVOICE');
+
+      // Find the invoice to check business rules
+      const invoiceToDelete = invoices.find(inv => inv.id === id);
+      if (invoiceToDelete) {
+        // Check business rules (e.g., cannot delete paid invoices unless admin)
+        const canDelete = await permissionGuard.canDeleteClient(invoiceToDelete); // Note: This should be canDeleteInvoice
+        if (!canDelete) {
+          alert("Cannot delete this invoice. It may be finalized or have payment restrictions.");
+          return;
+        }
+      }
+
+      if (window.confirm("Are you sure you want to delete this invoice?")) {
+        await deleteDoc(doc(db, "invoices", id));
+        setInvoices((prev) => prev.filter((inv) => inv.id !== id));
+
+        logger.info('Invoice deleted successfully', {
+          invoiceId: id,
+          deletedBy: authService.getCurrentUser()?.uid
+        });
+      }
+    } catch (error) {
+      if (error.name === 'PermissionError') {
+        alert("Access denied: " + error.message);
+      } else {
+        logger.error('Failed to delete invoice', {
+          invoiceId: id,
+          error: error.message,
+          userId: authService.getCurrentUser()?.uid
+        });
+        alert("Failed to delete invoice: " + error.message);
+      }
     }
   };
 
@@ -299,6 +380,29 @@ export default function AllInvoices() {
     setPage(1);
   };
 
+  // Filter actions based on permissions using hook
+  const { hasPermission } = usePermission();
+
+  const getAvailableActions = () => {
+    const actions = [];
+
+    if (hasPermission('UPDATE_INVOICE')) {
+      actions.push('edit');
+    }
+
+    if (hasPermission('DELETE_INVOICE')) {
+      actions.push('delete');
+    }
+
+    if (hasPermission('READ_INVOICE')) {
+      actions.push('preview');
+    }
+
+    return actions;
+  };
+
+  const availableActions = getAvailableActions();
+
   const headers = [
     { label: "Invoice ID", key: "invoice_id" },
     { label: "Client ID", key: "client_id" },
@@ -422,16 +526,22 @@ export default function AllInvoices() {
                                   anchorRef={anchorRef}
                                   onClose={() => setOpenMenuForId(null)}
                                   onEdit={() => {
-                                    setOpenMenuForId(null);
-                                    navigate(`/dashboard/edit-invoice/${invoice.id}`);
+                                    if (availableActions.includes('edit')) {
+                                      setOpenMenuForId(null);
+                                      navigate(`/dashboard/edit-invoice/${invoice.id}`);
+                                    }
                                   }}
                                   onDelete={async () => {
-                                    setOpenMenuForId(null);
-                                    await handleDelete(invoice.id);
+                                    if (availableActions.includes('delete')) {
+                                      setOpenMenuForId(null);
+                                      await handleDelete(invoice.id);
+                                    }
                                   }}
                                   onPreview={() => {
-                                    setOpenMenuForId(null);
-                                    navigate(`/dashboard/invoice-preview/${invoice.id}`);
+                                    if (availableActions.includes('preview')) {
+                                      setOpenMenuForId(null);
+                                      navigate(`/dashboard/invoice-preview/${invoice.id}`);
+                                    }
                                   }}
                                 />
                               ) : null
@@ -488,6 +598,12 @@ function DotsMenu({ isOpen, onToggle, renderBubble }) {
 
 function RowActionsBubble({ onEdit, onDelete, onPreview, anchorRef, onClose }) {
   const bubbleRef = useRef(null);
+  const { hasPermission } = usePermission();
+  const availableActions = [];
+
+  if (hasPermission('UPDATE_INVOICE')) availableActions.push('edit');
+  if (hasPermission('DELETE_INVOICE')) availableActions.push('delete');
+  if (hasPermission('READ_INVOICE')) availableActions.push('preview');
 
   useEffect(() => {
     const onClick = (e) => {
@@ -532,24 +648,30 @@ function RowActionsBubble({ onEdit, onDelete, onPreview, anchorRef, onClose }) {
       <div className="relative">
         {/* Bubble */}
         <div className="rounded-full shadow-lg px-4 py-3 flex items-center gap-5 editpopup">
-          <button
-            onClick={onEdit}
-            className="px-4 py-1.5 bg-[#ffffff] text-[#2E53A3] rounded-md text-sm font-medium hover:bg-gray-100 transition m-[5px] border-curve p-[5px] border-0 cursor-pointer"
-          >
-            Edit
-          </button>
-          <button
-            onClick={onDelete}
-            className="px-4 py-1.5 bg-[#ffffff] text-[#2E53A3] rounded-md text-sm font-medium hover:bg-gray-100 transition m-[5px] border-curve p-[5px] border-0 cursor-pointer"
-          >
-            Delete
-          </button>
-          <button
-            onClick={onPreview}
-            className="px-4 py-1.5 bg-[#ffffff] text-[#2E53A3] rounded-md text-sm font-medium hover:bg-gray-100 transition m-[5px] border-curve p-[5px] border-0 cursor-pointer"
-          >
-            Preview
-          </button>
+          {availableActions.includes('edit') && (
+            <button
+              onClick={onEdit}
+              className="px-4 py-1.5 bg-[#ffffff] text-[#2E53A3] rounded-md text-sm font-medium hover:bg-gray-100 transition m-[5px] border-curve p-[5px] border-0 cursor-pointer"
+            >
+              Edit
+            </button>
+          )}
+          {availableActions.includes('delete') && (
+            <button
+              onClick={onDelete}
+              className="px-4 py-1.5 bg-[#ffffff] text-[#2E53A3] rounded-md text-sm font-medium hover:bg-gray-100 transition m-[5px] border-curve p-[5px] border-0 cursor-pointer"
+            >
+              Delete
+            </button>
+          )}
+          {availableActions.includes('preview') && (
+            <button
+              onClick={onPreview}
+              className="px-4 py-1.5 bg-[#ffffff] text-[#2E53A3] rounded-md text-sm font-medium hover:bg-gray-100 transition m-[5px] border-curve p-[5px] border-0 cursor-pointer"
+            >
+              Preview
+            </button>
+          )}
         </div>
       </div>
     </div>

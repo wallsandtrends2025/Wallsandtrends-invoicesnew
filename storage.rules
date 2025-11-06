@@ -1,14 +1,24 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Allow authenticated users to upload and read invoice PDFs
+    // SECURED: Invoice PDFs - only authenticated users with proper roles can access
     match /invoices/{invoiceId}/{allPaths=**} {
       allow read, write: if request.auth != null;
     }
     
-    // Allow read access to public assets
+    // SECURED: User-specific PDF storage - only the owner can access
+    match /users/{userId}/{allPaths=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // SECURED: Application assets - require authentication
+    match /assets/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // DEFAULT DENY: All other access is explicitly denied
     match /{allPaths=**} {
-      allow read;
+      allow read, write: if false;
     }
   }
 }

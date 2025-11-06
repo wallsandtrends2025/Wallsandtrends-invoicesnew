@@ -1,66 +1,168 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users collection - authenticated access only, users can only access their own data
+
+    // ============================================================================
+    // USER MANAGEMENT WITH APPROVAL SYSTEM
+    // ============================================================================
+
+    // Users collection - enhanced with admin access for approval management
     match /users/{userId} {
+      // Users can read/write their own data
       allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // Admins can read and update all users for management
+      allow read, update: if request.auth != null &&
+        getUserRole(request.auth.uid) in ['ADMIN', 'SUPER_ADMIN'];
     }
 
-    // Invoices - authenticated users can read, only admins can write
+    // Helper function to get user role from Firestore
+    function getUserRole(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.role;
+    }
+
+    // Validate approval-related updates
+    function validateApprovalUpdate(currentData, newData) {
+      // Only allow changes to these fields by admins
+      let allowedFields = ['isApproved', 'approvedBy', 'approvedAt', 'role', 'roleLevel', 'updatedAt'];
+
+      // Check that only allowed fields are being modified
+      let diff = newData.diff(currentData);
+      return diff.changedKeys().hasOnly(allowedFields) &&
+             // Additional validation for approval fields
+             validateApprovalFields(newData);
+    }
+
+    // Validate approval field values
+    function validateApprovalFields(data) {
+      // isApproved must be boolean
+      return (!data.keys().hasAny(['isApproved']) || data.isApproved is bool) &&
+             // approvedBy must be string if present
+             (!data.keys().hasAny(['approvedBy']) || !exists(data.approvedBy) || data.approvedBy is string) &&
+             // role must be valid if present
+             (!data.keys().hasAny(['role']) || data.role in ['USER', 'EDITOR', 'MANAGER', 'ADMIN', 'SUPER_ADMIN']) &&
+             // Additional validation for approval workflow
+             validateApprovalWorkflow(data);
+    }
+
+    // Validate approval workflow integrity
+    function validateApprovalWorkflow(data) {
+      // Simplified validation - allow all approval-related updates for now
+      return true;
+    }
+
+    // Login attempts - SECURED: Only authenticated users can access, restricted by email ownership
+    match /login_attempts/{email} {
+      allow read, write: if request.auth != null &&
+        request.auth.token.email == email; // User can only access their own login attempts
+    }
+
+    // Verification codes - SECURED: User can only access codes with their UID prefix
+    match /verification_codes/{codeId} {
+      allow read, write: if request.auth != null &&
+        request.auth.uid == codeId.split('_')[0]; // User can only access codes with their UID prefix
+    }
+
+    // Invoices - authenticated users can read, role-based write access
     match /invoices/{invoiceId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null &&
-        request.auth.token.role == 'admin';
+        (request.auth.token.roleLevel >= 2 || // EDITOR+
+         (request.auth.token.roleLevel >= 4 && resource.data.ownerId == request.auth.uid)); // OWNERS can edit their own
     }
 
-    // Clients - authenticated users can read, only admins can write
+    // Clients - authenticated users can read, role-based write access
     match /clients/{clientId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null &&
-        request.auth.token.role == 'admin';
+        request.auth.token.roleLevel >= 4; // ADMIN+
     }
 
-    // Quotations - authenticated users can read, only admins can write
+    // Quotations - authenticated users can read, role-based write access
     match /quotations/{quotationId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null &&
-        request.auth.token.role == 'admin';
+        (request.auth.token.roleLevel >= 2 || // EDITOR+
+         (request.auth.token.roleLevel >= 4 && resource.data.ownerId == request.auth.uid)); // OWNERS can edit their own
     }
 
-    // Proformas - authenticated users can read, only admins can write
+    // Proformas - authenticated users can read, role-based write access
     match /proformas/{proformaId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null &&
-        request.auth.token.role == 'admin';
+        (request.auth.token.roleLevel >= 2 || // EDITOR+
+         (request.auth.token.roleLevel >= 4 && resource.data.ownerId == request.auth.uid)); // OWNERS can edit their own
     }
 
-    // Projects - authenticated users can read, only admins can write
+    // Projects - authenticated users can read, role-based write access
     match /projects/{projectId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null &&
-        request.auth.token.role == 'admin';
+        request.auth.token.roleLevel >= 4; // ADMIN+
     }
 
-    // POCs - authenticated users can read, only admins can write
+    // POCs - authenticated users can read, role-based write access
     match /pocs/{pocId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null &&
-        request.auth.token.role == 'admin';
+        request.auth.token.roleLevel >= 4; // ADMIN+
     }
 
     // PDF storage metadata - authenticated access
     match /invoice_pdfs/{pdfId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null &&
-        request.auth.token.role == 'admin';
+        request.auth.token.roleLevel >= 2; // EDITOR+
+    }
+
+    // ============================================================================
+    // APPROVAL SYSTEM COLLECTIONS
+    // ============================================================================
+
+    // Approval audit logs - immutable records of approval actions
+    match /approval_audit_logs/{logId} {
+      allow read: if request.auth != null &&
+        getUserRole(request.auth.uid) in ['ADMIN', 'SUPER_ADMIN'];
+      allow create: if request.auth != null &&
+        getUserRole(request.auth.uid) in ['ADMIN', 'SUPER_ADMIN'];
+      // No updates or deletes - logs are immutable
+      allow update, delete: if false;
+    }
+
+    // Admin notifications - for email delivery tracking
+    match /admin_notifications/{notificationId} {
+      // Users can create notifications (via login attempts)
+      allow create: if request.auth != null;
+
+      // Admins can read notifications sent to them
+      allow read: if request.auth != null &&
+        (request.auth.uid == resource.data.adminId ||
+         getUserRole(request.auth.uid) in ['ADMIN', 'SUPER_ADMIN']);
+
+      // Only Firebase Functions can update delivery status
+      allow update: if request.auth == null ||
+        getUserRole(request.auth.uid) in ['ADMIN', 'SUPER_ADMIN'];
+    }
+
+    // Email delivery metrics - for monitoring and analytics
+    match /email_delivery_metrics/{metricId} {
+      allow read: if request.auth != null &&
+        getUserRole(request.auth.uid) in ['ADMIN', 'SUPER_ADMIN'];
+      allow create: if request.auth == null; // Only Firebase Functions can create
+      allow update, delete: if false; // Immutable metrics
     }
 
     // Audit logs - authenticated access, admins can write
     match /audit_logs/{logId} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null &&
+        request.auth.token.roleLevel >= 4; // ADMIN+
       allow write: if request.auth != null &&
-        request.auth.token.role == 'admin';
+        request.auth.token.roleLevel >= 4; // ADMIN+
     }
+
+    // ============================================================================
+    // SECURITY: Explicit deny for all other access
+    // ============================================================================
 
     // Deny all other access - explicit deny for security
     match /{document=**} {

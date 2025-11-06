@@ -5,6 +5,8 @@ import { db } from "../firebase";
 import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import Select from "react-select";
 import { InputSanitizer } from "../utils/sanitization";
+import { permissionGuard } from "../utils/permissionGuard";
+import { authService } from "../utils/authService.jsx";
 
 export default function EditInvoice() {
   const { id } = useParams();
@@ -166,50 +168,77 @@ export default function EditInvoice() {
   const isIndian = (c) => (c?.country || "").toLowerCase() === "india";
   const isTelangana = (c) => (c?.state || "").toLowerCase() === "telangana";
 
-  // Load invoice
+  // Load invoice with permission check
   useEffect(() => {
     const load = async () => {
-      const ref = doc(db, "invoices", id);
-      const snap = await getDoc(ref);
-      if (!snap.exists()) {
-        alert("Invoice not found.");
-        navigate(-1);
-        return;
-      }
-      const raw = snap.data();
-      const data = Object.fromEntries(Object.entries(raw).filter(([k]) => EDITABLE_FIELDS.has(k)));
+      try {
+        // Check permission to edit invoices
+        await permissionGuard.requirePermission('UPDATE_INVOICE');
 
-      data.invoice_date = toYMD(data.invoice_date);
-      data.payment_date = toYMD(data.payment_date);
+        const ref = doc(db, "invoices", id);
+        const snap = await getDoc(ref);
 
-      ["subtotal", "cgst", "sgst", "igst", "tax_amount", "total_amount", "amount_paid_total"].forEach(
-        (k) => (data[k] = Number(data[k] ?? 0))
-      );
+        if (!snap.exists()) {
+          alert("Invoice not found.");
+          navigate(-1);
+          return;
+        }
 
-      // normalize services
-      const normalizeRow = (row) => {
-        const name =
-          Array.isArray(row?.name)
-            ? row.name
-            : typeof row?.name === "string"
-            ? row.name
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean)
-            : [];
-        return {
-          name,
-          description: String(row?.description ?? ""),
-          amount: Number(row?.amount ?? 0),
+        const raw = snap.data();
+
+        // Check resource-specific permission
+        await permissionGuard.requireResourceAccess('invoice', id, 'write', raw);
+
+        // Check business rules (e.g., cannot edit finalized invoices unless admin)
+        const canEdit = await permissionGuard.canEditInvoice(raw);
+        if (!canEdit) {
+          alert("You don't have permission to edit this invoice. It may be finalized or too old.");
+          navigate(-1);
+          return;
+        }
+
+        const data = Object.fromEntries(Object.entries(raw).filter(([k]) => EDITABLE_FIELDS.has(k)));
+
+        data.invoice_date = toYMD(data.invoice_date);
+        data.payment_date = toYMD(data.payment_date);
+
+        ["subtotal", "cgst", "sgst", "igst", "tax_amount", "total_amount", "amount_paid_total"].forEach(
+          (k) => (data[k] = Number(data[k] ?? 0))
+        );
+
+        // normalize services
+        const normalizeRow = (row) => {
+          const name =
+            Array.isArray(row?.name)
+              ? row.name
+              : typeof row?.name === "string"
+              ? row.name
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              : [];
+          return {
+            name,
+            description: String(row?.description ?? ""),
+            amount: Number(row?.amount ?? 0),
+          };
         };
-      };
-      data.services = Array.isArray(data.services) ? data.services.map(normalizeRow) : [];
+        data.services = Array.isArray(data.services) ? data.services.map(normalizeRow) : [];
 
-      data.payment_status = data.payment_status || "Pending";
-      data.gst_payment_status = data.gst_payment_status || "Pending";
+        data.payment_status = data.payment_status || "Pending";
+        data.gst_payment_status = data.gst_payment_status || "Pending";
 
-      setInvoice((p) => ({ ...p, ...data }));
-      setAmountPayingNow(0);
+        setInvoice((p) => ({ ...p, ...data }));
+        setAmountPayingNow(0);
+      } catch (error) {
+        if (error.name === 'PermissionError') {
+          alert("Access denied: " + error.message);
+          navigate(-1);
+        } else {
+          alert("Error loading invoice: " + error.message);
+          navigate(-1);
+        }
+      }
     };
     load();
   }, [id, navigate]);
@@ -297,53 +326,98 @@ export default function EditInvoice() {
       Number(n || 0)
     );
 
-  // Save submit
+  // Save submit with permission checks
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!invoice.invoice_title.trim()) return alert("Invoice title is required.");
-    if ((invoice.services || []).length === 0) return alert("Add at least one service.");
-
-    if (invoice.payment_status === "Partial") {
-      if (payingNow <= 0 || alreadyPaid + payingNow > totalAmount)
-        return alert("Please check your pending amount correctly.");
-    }
-    if (invoice.payment_status === "Paid" && alreadyPaid + payingNow > totalAmount)
-      return alert("Please check your pending amount correctly.");
-
-    const draft = Object.fromEntries(Object.entries(invoice).filter(([k]) => EDITABLE_FIELDS.has(k)));
-
-    draft.invoice_date = toDateOrNull(invoice.invoice_date);
-    draft.payment_date = toDateOrNull(invoice.payment_date);
-
-    draft.services = sanitizedServices;
-    draft.subtotal = Number(subtotal.toFixed(2));
-    draft.cgst = Number(cgst.toFixed(2));
-    draft.sgst = Number(sgst.toFixed(2));
-    draft.igst = Number(igst.toFixed(2));
-    draft.tax_amount = Number(tax_amount.toFixed(2));
-    draft.total_amount = Number(total_amount.toFixed(2));
-
-    const gstApplicable = isIndian(client);
-    draft.gst_payment_status = gstApplicable ? invoice.gst_payment_status : "NA";
-
-    if (invoice.payment_status === "Partial") {
-      draft.amount_paid_total = Number(alreadyPaid + payingNow);
-    } else if (invoice.payment_status === "Paid") {
-      draft.amount_paid_total = Math.min(totalAmount, Number(alreadyPaid + payingNow));
-    } else {
-      draft.amount_paid_total = alreadyPaid;
-    }
-
-    draft.updated_at = serverTimestamp();
-
-    setSaving(true);
     try {
+      // Re-check permissions before saving (in case they changed)
+      await permissionGuard.requirePermission('UPDATE_INVOICE');
+      await permissionGuard.requireResourceAccess('invoice', id, 'write', invoice);
+
+      // Re-check business rules
+      const canEdit = await permissionGuard.canEditInvoice(invoice);
+      if (!canEdit) {
+        alert("You no longer have permission to edit this invoice.");
+        return;
+      }
+
+      if (!invoice.invoice_title.trim()) {
+        alert("Invoice title is required.");
+        return;
+      }
+
+      if ((invoice.services || []).length === 0) {
+        alert("Add at least one service.");
+        return;
+      }
+
+      if (invoice.payment_status === "Partial") {
+        if (payingNow <= 0 || alreadyPaid + payingNow > totalAmount) {
+          alert("Please check your pending amount correctly.");
+          return;
+        }
+      }
+
+      if (invoice.payment_status === "Paid" && alreadyPaid + payingNow > totalAmount) {
+        alert("Please check your pending amount correctly.");
+        return;
+      }
+
+      const draft = Object.fromEntries(Object.entries(invoice).filter(([k]) => EDITABLE_FIELDS.has(k)));
+
+      draft.invoice_date = toDateOrNull(invoice.invoice_date);
+      draft.payment_date = toDateOrNull(invoice.payment_date);
+
+      draft.services = sanitizedServices;
+      draft.subtotal = Number(subtotal.toFixed(2));
+      draft.cgst = Number(cgst.toFixed(2));
+      draft.sgst = Number(sgst.toFixed(2));
+      draft.igst = Number(igst.toFixed(2));
+      draft.tax_amount = Number(tax_amount.toFixed(2));
+      draft.total_amount = Number(total_amount.toFixed(2));
+
+      const gstApplicable = isIndian(client);
+      draft.gst_payment_status = gstApplicable ? invoice.gst_payment_status : "NA";
+
+      if (invoice.payment_status === "Partial") {
+        draft.amount_paid_total = Number(alreadyPaid + payingNow);
+      } else if (invoice.payment_status === "Paid") {
+        draft.amount_paid_total = Math.min(totalAmount, Number(alreadyPaid + payingNow));
+      } else {
+        draft.amount_paid_total = alreadyPaid;
+      }
+
+      draft.updated_at = serverTimestamp();
+      draft.updated_by = authService.getCurrentUser()?.uid;
+
+      setSaving(true);
+
+      // Final permission check before database operation
+      await permissionGuard.requireResourceAccess('invoice', id, 'write', draft);
+
       await updateDoc(doc(db, "invoices", id), draft);
+
+      // Log successful edit
+      logger.info('Invoice updated successfully', {
+        invoiceId: id,
+        updatedBy: authService.getCurrentUser()?.uid,
+        changes: Object.keys(draft)
+      });
+
       navigate("/dashboard/pdf-manager");
-    } catch (err) {
-      console.error(err);
-      alert("Failed to save invoice.");
+
+    } catch (error) {
+      if (error.name === 'PermissionError') {
+        alert("Permission denied: " + error.message);
+      } else {
+        logger.error('Failed to save invoice', {
+          error: error.message,
+          invoiceId: id,
+          userId: authService.getCurrentUser()?.uid
+        });
+        alert("Failed to save invoice: " + error.message);
+      }
     } finally {
       setSaving(false);
     }
@@ -353,8 +427,13 @@ export default function EditInvoice() {
     <div className="bg-[#F4F6FF] p-[10px]">
       <div className="max-w-6xl mx-auto">
         {/* Title chip (matches Edit Proforma) */}
-        <div className="bg-[#ffffff] shadow-sm mb-4 p-[15px] rounded-xl">
+        <div className="bg-[#ffffff] shadow-sm mb-4 p-[15px] rounded-xl flex justify-between items-center">
           <h2 className="font-semibold text-[#000000] m-[0]">Edit Invoice</h2>
+          {authService.isAdmin() && (
+            <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+              Admin Mode
+            </span>
+          )}
         </div>
 
         {/* Main form card */}
