@@ -1,25 +1,16 @@
 /**
- * Enterprise-Grade Authentication & Authorization Service
- * Implements RBAC (Role-Based Access Control) with Firebase Auth
- * Designed with Google-level security standards and scalability
+ * Authentication Service - Core authentication logic
+ * Handles user sign up, sign in, session management
  */
 
-import { auth, db, functions } from '../firebase';
+import { auth, db } from '../../firebase';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  updateProfile,
-  sendPasswordResetEmail,
-  confirmPasswordReset,
-  verifyPasswordResetCode,
-  applyActionCode,
-  updatePassword,
-  reauthenticateWithCredential,
-  EmailAuthProvider
+  updateProfile
 } from 'firebase/auth';
-import { httpsCallable } from 'firebase/functions';
 import {
   doc,
   setDoc,
@@ -29,63 +20,42 @@ import {
   query,
   where,
   getDocs,
-  serverTimestamp,
-  deleteDoc
+  serverTimestamp
 } from 'firebase/firestore';
-import { logger } from './logger';
-import { SecureDataHandler } from './encryption';
+import { logger } from '../logger';
+import { SecureDataHandler } from '../encryption';
 
-// ============================================================================
-// CONSTANTS & CONFIGURATION
-// ============================================================================
-
-/**
- * User Roles Hierarchy
- * Higher numbers = more permissions
- */
 export const USER_ROLES = {
-  GUEST: 0,        // Unauthenticated users
-  USER: 1,         // Basic authenticated users (read-only)
-  EDITOR: 2,       // Can create/edit own documents
-  MANAGER: 3,      // Can manage team documents
-  ADMIN: 4,        // Full system access
-  SUPER_ADMIN: 5   // System administration
+  GUEST: 0,
+  USER: 1,
+  EDITOR: 2,
+  MANAGER: 3,
+  ADMIN: 4,
+  SUPER_ADMIN: 5
 };
 
 export const PERMISSIONS = {
-  // Document Operations
   CREATE_INVOICE: [USER_ROLES.EDITOR, USER_ROLES.MANAGER, USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN],
   READ_INVOICE: [USER_ROLES.USER, USER_ROLES.EDITOR, USER_ROLES.MANAGER, USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN],
   UPDATE_INVOICE: [USER_ROLES.EDITOR, USER_ROLES.MANAGER, USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN],
   DELETE_INVOICE: [USER_ROLES.MANAGER, USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN],
-
-  // Client Management
   CREATE_CLIENT: [USER_ROLES.EDITOR, USER_ROLES.MANAGER, USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN],
   READ_CLIENT: [USER_ROLES.USER, USER_ROLES.EDITOR, USER_ROLES.MANAGER, USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN],
   UPDATE_CLIENT: [USER_ROLES.EDITOR, USER_ROLES.MANAGER, USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN],
   DELETE_CLIENT: [USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN],
-
-  // Project Management
   CREATE_PROJECT: [USER_ROLES.EDITOR, USER_ROLES.MANAGER, USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN],
   READ_PROJECT: [USER_ROLES.USER, USER_ROLES.EDITOR, USER_ROLES.MANAGER, USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN],
   UPDATE_PROJECT: [USER_ROLES.EDITOR, USER_ROLES.MANAGER, USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN],
   DELETE_PROJECT: [USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN],
-
-  // User Management
   CREATE_USER: [USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN],
   READ_USER: [USER_ROLES.MANAGER, USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN],
   UPDATE_USER: [USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN],
   DELETE_USER: [USER_ROLES.SUPER_ADMIN],
-
-  // System Administration
   SYSTEM_CONFIG: [USER_ROLES.SUPER_ADMIN],
   AUDIT_LOGS: [USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN],
   BACKUP_RESTORE: [USER_ROLES.SUPER_ADMIN]
 };
 
-/**
- * Security Configuration
- */
 const SECURITY_CONFIG = {
   MAX_LOGIN_ATTEMPTS: 5,
   LOCKOUT_DURATION_MINUTES: 15,
@@ -96,10 +66,6 @@ const SECURITY_CONFIG = {
   PASSWORD_REQUIRE_SYMBOLS: true,
   SESSION_TIMEOUT_HOURS: 8
 };
-
-// ============================================================================
-// TYPE DEFINITIONS
-// ============================================================================
 
 export class UserProfile {
   constructor(data) {
@@ -124,40 +90,21 @@ export class AuthState {
   }
 }
 
-// ============================================================================
-// AUTHENTICATION SERVICE CLASS
-// ============================================================================
-
 class AuthService {
   constructor() {
     this.currentUser = null;
     this.authStateListeners = new Set();
-    this.permissionCache = new Map();
     this.sessionTimeoutId = null;
-
     this.initializeAuthStateListener();
     this.setupSessionManagement();
   }
 
-  // ============================================================================
-  // AUTHENTICATION METHODS
-  // ============================================================================
-
-  /**
-   * Sign up a new user with management team flag
-   */
   async signUp(email, password, displayName, isManagement = false) {
     try {
-      // Validate password strength
       this.validatePasswordStrength(password);
-
-      // Create Firebase Auth user
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-
-      // Set display name
       await updateProfile(userCredential.user, { displayName });
 
-      // Create user profile in Firestore (with encryption)
       const userProfile = {
         displayName,
         isActive: true,
@@ -165,15 +112,12 @@ class AuthService {
         lastLoginAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-        metadata: {
-          securityLevel: isManagement ? 'high' : 'low'
-        }
+        metadata: { securityLevel: isManagement ? 'high' : 'low' }
       };
 
-      // Encrypt sensitive fields before storage
       const secureProfile = await SecureDataHandler.secureDataForStorage({
         ...userProfile,
-        email // Email will be encrypted
+        email
       });
 
       const userDocRef = doc(db, 'users', userCredential.user.uid);
@@ -201,18 +145,11 @@ class AuthService {
     }
   }
 
-  /**
-   * Sign in user with enhanced security checks and approval validation
-   */
   async signIn(email, password) {
     try {
-      // Attempt Firebase sign in first to get user profile
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-
-      // Get user profile from Firestore
       let userProfile = await this.getUserProfile(userCredential.user.uid);
 
-      // If no profile exists, create one automatically
       if (!userProfile) {
         logger.info('Creating user profile for new user', { uid: userCredential.user.uid, email });
         userProfile = await this.createUserProfileFromAuth(userCredential.user);
@@ -222,16 +159,10 @@ class AuthService {
         throw new Error('Account is deactivated. Please contact administrator.');
       }
 
-      // Update last login
       await this.updateLastLogin(userCredential.user.uid);
-
-      // Reset login attempts on successful login
       await this.resetLoginAttempts(email);
 
-      // Cache current user
       this.currentUser = userProfile;
-
-      // Start session timeout
       this.startSessionTimeout();
 
       logger.info('User signed in successfully', {
@@ -247,10 +178,6 @@ class AuthService {
     }
   }
 
-
-  /**
-   * Sign out user and clean up session
-   */
   async signOut() {
     try {
       await signOut(auth);
@@ -262,29 +189,15 @@ class AuthService {
     }
   }
 
-  // ============================================================================
-  // AUTHORIZATION METHODS
-  // ============================================================================
-
-  /**
-   * Check if current user has permission for an action
-   */
   async hasPermission(permission, context) {
     if (!this.currentUser) return false;
-
-    // Check server-side management status via Firestore
     return await this.checkServerSideManagementStatus();
   }
 
-  /**
-   * Check management status from server (Firestore)
-   * Uses hashed UID for additional security
-   */
   async checkServerSideManagementStatus() {
     if (!this.currentUser) return false;
 
     try {
-      // Hash the UID for additional security layer
       const hashedUid = await this.hashUid(this.currentUser.uid);
       const userDoc = await getDoc(doc(db, 'management_team', hashedUid));
       return userDoc.exists();
@@ -294,10 +207,6 @@ class AuthService {
     }
   }
 
-  /**
-   * Hash UID for secure storage
-   * @private
-   */
   async hashUid(uid) {
     const encoder = new TextEncoder();
     const data = encoder.encode(uid + 'wallsandtrends_salt');
@@ -306,9 +215,6 @@ class AuthService {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  /**
-   * Require permission or throw error
-   */
   async requirePermission(permission, context) {
     if (!(await this.hasPermission(permission, context))) {
       const error = new Error(`Insufficient permissions: ${permission}`);
@@ -321,13 +227,6 @@ class AuthService {
     }
   }
 
-  // ============================================================================
-  // USER MANAGEMENT METHODS
-  // ============================================================================
-
-  /**
-   * Get user profile from Firestore by UID
-   */
   async getUserProfile(uid) {
     try {
       const userDoc = await getDoc(doc(db, 'users', uid));
@@ -335,8 +234,6 @@ class AuthService {
       if (!userDoc.exists()) return null;
 
       const encryptedData = userDoc.data();
-
-      // Decrypt sensitive fields for client use
       const decryptedData = await SecureDataHandler.prepareDataForClient(encryptedData);
 
       return new UserProfile({
@@ -349,51 +246,18 @@ class AuthService {
     }
   }
 
-  /**
-   * Get user profile from Firestore by email (for login attempts tracking)
-   */
-  async getUserProfileByEmail(email) {
-    try {
-      // For email queries, we need to search through all users since email is encrypted
-      // This is a limitation of field-level encryption - email queries become less efficient
-      const usersSnapshot = await getDocs(collection(db, 'users'));
-
-      for (const userDoc of usersSnapshot.docs) {
-        const encryptedData = userDoc.data();
-        const decryptedData = await SecureDataHandler.prepareDataForClient(encryptedData);
-
-        if (decryptedData.email === email) {
-          return new UserProfile({
-            uid: userDoc.id,
-            ...decryptedData
-          });
-        }
-      }
-
-      return null;
-    } catch (error) {
-      logger.error('Failed to get user profile by email', { error: error.message });
-      return null;
-    }
-  }
-
-  /**
-   * Create user profile from Firebase Auth user (for first-time login)
-   */
   async createUserProfileFromAuth(firebaseUser) {
     try {
       const userProfile = {
         email: firebaseUser.email,
         displayName: firebaseUser.displayName || firebaseUser.email.split('@')[0],
-        isManagement: false, // Default: not management team
+        isManagement: false,
         isActive: true,
         isEmailVerified: true,
         lastLoginAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-        metadata: {
-          securityLevel: 'low'
-        }
+        metadata: { securityLevel: 'low' }
       };
 
       const userDocRef = doc(db, 'users', firebaseUser.uid);
@@ -421,58 +285,6 @@ class AuthService {
     }
   }
 
-  /**
-   * Update user role (management only)
-   */
-  async updateUserRole(uid, newRole) {
-    await this.requirePermission('UPDATE_USER');
-
-    try {
-      const userRef = doc(db, 'users', uid);
-      await updateDoc(userRef, {
-        role: newRole,
-        roleLevel: USER_ROLES[newRole],
-        metadata: {
-          securityLevel: this.getSecurityLevelForRole(newRole)
-        },
-        updatedAt: serverTimestamp()
-      });
-
-      logger.info('User role updated', { uid, newRole, updatedBy: this.currentUser?.uid });
-    } catch (error) {
-      logger.error('Failed to update user role', { error: error.message, uid, newRole });
-      throw error;
-    }
-  }
-
-
-  /**
-   * Deactivate user account
-   */
-  async deactivateUser(uid) {
-    await this.requirePermission('DELETE_USER');
-
-    try {
-      const userRef = doc(db, 'users', uid);
-      await updateDoc(userRef, {
-        isActive: false,
-        updatedAt: serverTimestamp()
-      });
-
-      logger.info('User account deactivated', { uid, deactivatedBy: this.currentUser?.uid });
-    } catch (error) {
-      logger.error('Failed to deactivate user', { error: error.message, uid });
-      throw error;
-    }
-  }
-
-  // ============================================================================
-  // SECURITY METHODS
-  // ============================================================================
-
-  /**
-   * Validate password strength
-   */
   validatePasswordStrength(password) {
     if (password.length < SECURITY_CONFIG.PASSWORD_MIN_LENGTH) {
       throw new Error(`Password must be at least ${SECURITY_CONFIG.PASSWORD_MIN_LENGTH} characters long`);
@@ -495,76 +307,6 @@ class AuthService {
     }
   }
 
-  /**
-   * Check for account lockout
-   */
-  async checkAccountLockout(email) {
-    try {
-      const lockoutDoc = await getDoc(doc(db, 'login_attempts', email));
-      if (!lockoutDoc.exists()) return;
-
-      const data = lockoutDoc.data();
-      const attempts = data.attempts || 0;
-      const lastAttempt = data.lastAttempt?.toDate();
-
-      if (attempts >= SECURITY_CONFIG.MAX_LOGIN_ATTEMPTS) {
-        const lockoutEnd = new Date(lastAttempt.getTime() + (SECURITY_CONFIG.LOCKOUT_DURATION_MINUTES * 60 * 1000));
-
-        if (new Date() < lockoutEnd) {
-          const remainingMinutes = Math.ceil((lockoutEnd.getTime() - Date.now()) / (60 * 1000));
-          throw new Error(`Account is locked due to too many failed attempts. Try again in ${remainingMinutes} minutes.`);
-        }
-      }
-    } catch (error) {
-      if (error.message.includes('locked')) throw error;
-      // Log but don't fail for lockout check errors
-      logger.warn('Lockout check failed', { error: error.message, email });
-    }
-  }
-
-  /**
-   * Record failed login attempt
-   */
-  async recordFailedLoginAttempt(email) {
-    try {
-      const attemptRef = doc(db, 'login_attempts', email);
-      const attemptDoc = await getDoc(attemptRef);
-
-      if (attemptDoc.exists()) {
-        const data = attemptDoc.data();
-        await updateDoc(attemptRef, {
-          attempts: (data.attempts || 0) + 1,
-          lastAttempt: serverTimestamp()
-        });
-      } else {
-        await setDoc(attemptRef, {
-          attempts: 1,
-          lastAttempt: serverTimestamp()
-        });
-      }
-    } catch (error) {
-      logger.warn('Failed to record login attempt', { error: error.message, email });
-    }
-  }
-
-  /**
-   * Reset login attempts after successful login
-   */
-  async resetLoginAttempts(email) {
-    try {
-      const attemptRef = doc(db, 'login_attempts', email);
-      await setDoc(attemptRef, {
-        attempts: 0,
-        lastAttempt: serverTimestamp()
-      });
-    } catch (error) {
-      logger.warn('Failed to reset login attempts', { error: error.message, email });
-    }
-  }
-
-  /**
-   * Update last login timestamp
-   */
   async updateLastLogin(uid) {
     try {
       const userRef = doc(db, 'users', uid);
@@ -577,57 +319,21 @@ class AuthService {
     }
   }
 
-  /**
-   * Get security level for role
-   */
-  getSecurityLevelForRole(role) {
-    switch (role) {
-      case 'SUPER_ADMIN':
-        return 'critical';
-      case 'ADMIN':
-        return 'high';
-      case 'MANAGER':
-        return 'medium';
-      default:
-        return 'low';
+  async resetLoginAttempts(email) {
+    try {
+      const attemptRef = doc(db, 'login_attempts', email);
+      await setDoc(attemptRef, {
+        attempts: 0,
+        lastAttempt: serverTimestamp()
+      });
+    } catch (error) {
+      logger.warn('Failed to reset login attempts', { error: error.message, email });
     }
   }
 
-  /**
-   * Check contextual permissions
-   */
-  checkContextualPermission(permission, context) {
-    if (!this.currentUser) return false;
-
-    // Allow admins and super admins all contextual permissions
-    if ([USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN].includes(USER_ROLES[this.currentUser.role])) {
-      return true;
-    }
-
-    // For document ownership checks
-    if (context.ownerId && context.ownerId === this.currentUser.uid) {
-      return true;
-    }
-
-    // For department-based access
-    if (context.department && context.department === this.currentUser.metadata?.department) {
-      return USER_ROLES[this.currentUser.role] >= USER_ROLES.MANAGER;
-    }
-
-    return false;
-  }
-
-  // ============================================================================
-  // SESSION MANAGEMENT
-  // ============================================================================
-
-  /**
-   * Initialize Firebase Auth state listener
-   */
   initializeAuthStateListener() {
     onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // User is signed in
         const userProfile = await this.getUserProfile(firebaseUser.uid);
         this.currentUser = userProfile;
         this.notifyAuthStateListeners(new AuthState({
@@ -637,7 +343,6 @@ class AuthService {
           error: null
         }));
       } else {
-        // User is signed out
         this.currentUser = null;
         this.clearSession();
         this.notifyAuthStateListeners(new AuthState({
@@ -650,29 +355,20 @@ class AuthService {
     });
   }
 
-  /**
-   * Setup session management
-   */
   setupSessionManagement() {
-    // Clear session on page unload
     window.addEventListener('beforeunload', () => {
       this.clearSession();
     });
 
-    // Handle visibility change (tab switching)
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && this.currentUser) {
-        // Tab hidden - could implement session pause
+        // Tab hidden
       } else if (!document.hidden && this.currentUser) {
-        // Tab visible - check session validity
         this.validateSession();
       }
     });
   }
 
-  /**
-   * Start session timeout
-   */
   startSessionTimeout() {
     if (this.sessionTimeoutId) {
       clearTimeout(this.sessionTimeoutId);
@@ -684,14 +380,10 @@ class AuthService {
     }, SECURITY_CONFIG.SESSION_TIMEOUT_HOURS * 60 * 60 * 1000);
   }
 
-  /**
-   * Validate current session
-   */
   async validateSession() {
     if (!this.currentUser) return;
 
     try {
-      // Check if user still exists and is active
       const userProfile = await this.getUserProfile(this.currentUser.uid);
       if (!userProfile || !userProfile.isActive) {
         await this.signOut();
@@ -702,38 +394,21 @@ class AuthService {
     }
   }
 
-  /**
-   * Clear session data
-   */
   clearSession() {
     this.currentUser = null;
-    this.permissionCache.clear();
-
     if (this.sessionTimeoutId) {
       clearTimeout(this.sessionTimeoutId);
       this.sessionTimeoutId = null;
     }
   }
 
-  // ============================================================================
-  // AUTH STATE MANAGEMENT
-  // ============================================================================
-
-  /**
-   * Subscribe to auth state changes
-   */
   onAuthStateChange(callback) {
     this.authStateListeners.add(callback);
-
-    // Return unsubscribe function
     return () => {
       this.authStateListeners.delete(callback);
     };
   }
 
-  /**
-   * Notify all auth state listeners
-   */
   notifyAuthStateListeners(state) {
     this.authStateListeners.forEach(callback => {
       try {
@@ -744,9 +419,6 @@ class AuthService {
     });
   }
 
-  /**
-   * Handle Firebase auth errors
-   */
   handleAuthError(error) {
     switch (error.code) {
       case 'auth/user-disabled':
@@ -770,87 +442,32 @@ class AuthService {
     }
   }
 
-  // ============================================================================
-  // UTILITY METHODS
-  // ============================================================================
-
-  /**
-   * Get current user
-   */
   getCurrentUser() {
     return this.currentUser;
   }
 
-  /**
-   * Check if user is authenticated
-   */
   isAuthenticated() {
     return !!this.currentUser;
   }
 
-  /**
-   * Check if current user is management team (server-side check)
-   */
   async isManagement() {
     return await this.checkServerSideManagementStatus();
   }
 
-  /**
-   * Check if current user has admin role (legacy - now uses isManagement)
-   */
   isAdmin() {
     return this.isManagement();
   }
 
-  /**
-   * Check if current user has super admin role (legacy - now uses isManagement)
-   */
   isSuperAdmin() {
     return this.isManagement();
   }
-
-  /**
-   * Get all users (management only)
-   */
-  async getAllUsers() {
-    await this.requirePermission('READ_USER');
-
-    try {
-      const usersQuery = query(collection(db, 'users'));
-      const querySnapshot = await getDocs(usersQuery);
-
-      const users = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        users.push(new UserProfile({
-          uid: doc.id,
-          ...data
-        }));
-      });
-
-      return users;
-    } catch (error) {
-      logger.error('Failed to get all users', { error: error.message });
-      throw error;
-    }
-  }
 }
-
-// ============================================================================
-// EXPORT SINGLETON INSTANCE
-// ============================================================================
 
 export const authService = new AuthService();
 
-// ============================================================================
-// REACT HOOKS FOR EASY INTEGRATION
-// ============================================================================
-
+// React hooks
 import React from 'react';
 
-/**
- * React hook for authentication state
- */
 export function useAuth() {
   const [authState, setAuthState] = React.useState(new AuthState());
 
@@ -868,13 +485,6 @@ export function useAuth() {
   };
 }
 
-// ============================================================================
-// PERMISSION GUARD COMPONENTS
-// ============================================================================
-
-/**
- * Higher-order component for permission checking
- */
 export function withPermission(WrappedComponent, permission, fallback) {
   return function PermissionGuard(props) {
     const { hasPermission } = useAuth();
@@ -891,9 +501,6 @@ export function withPermission(WrappedComponent, permission, fallback) {
   };
 }
 
-/**
- * Permission guard component
- */
 export function PermissionGuard({ permission, children, fallback = null }) {
   const { hasPermission } = useAuth();
 
@@ -903,7 +510,3 @@ export function PermissionGuard({ permission, children, fallback = null }) {
 
   return children;
 }
-
-
- 
- 

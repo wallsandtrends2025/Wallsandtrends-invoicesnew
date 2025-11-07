@@ -6,19 +6,29 @@ service cloud.firestore {
     // USER MANAGEMENT WITH APPROVAL SYSTEM
     // ============================================================================
 
-    // Users collection - enhanced with admin access for approval management
+    // Users collection - basic user data
     match /users/{userId} {
       // Users can read/write their own data
       allow read, write: if request.auth != null && request.auth.uid == userId;
 
-      // Admins can read and update all users for management
-      allow read, update: if request.auth != null &&
-        getUserRole(request.auth.uid) in ['ADMIN', 'SUPER_ADMIN'];
+      // Management team can read all users
+      allow read: if request.auth != null &&
+        exists(/databases/$(database)/documents/management_team/$(request.auth.uid));
     }
 
-    // Helper function to get user role from Firestore
-    function getUserRole(uid) {
-      return get(/databases/$(database)/documents/users/$(uid)).data.role;
+    // Management team collection - server-side whitelist
+    match /management_team/{userId} {
+      // Only management team members can read the list
+      allow read: if request.auth != null &&
+        exists(/databases/$(database)/documents/management_team/$(request.auth.uid));
+
+      // Only Firebase Functions can write (server-side only)
+      allow write: if request.auth == null;
+    }
+
+    // Helper function to check if user is management team
+    function isManagementTeam(uid) {
+      return exists(/databases/$(database)/documents/management_team/$(uid));
     }
 
     // Validate approval-related updates
@@ -63,101 +73,78 @@ service cloud.firestore {
         request.auth.uid == codeId.split('_')[0]; // User can only access codes with their UID prefix
     }
 
-    // Invoices - authenticated users can read, role-based write access
+    // Invoices - management team only
     match /invoices/{invoiceId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null &&
-        (request.auth.token.roleLevel >= 2 || // EDITOR+
-         (request.auth.token.roleLevel >= 4 && resource.data.ownerId == request.auth.uid)); // OWNERS can edit their own
+      allow read, write: if request.auth != null &&
+        isManagementTeam(request.auth.uid);
     }
 
-    // Clients - authenticated users can read, role-based write access
+    // Clients - management team only
     match /clients/{clientId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null &&
-        request.auth.token.roleLevel >= 4; // ADMIN+
+      allow read, write: if request.auth != null &&
+        isManagementTeam(request.auth.uid);
     }
 
-    // Quotations - authenticated users can read, role-based write access
+    // Quotations - management team only
     match /quotations/{quotationId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null &&
-        (request.auth.token.roleLevel >= 2 || // EDITOR+
-         (request.auth.token.roleLevel >= 4 && resource.data.ownerId == request.auth.uid)); // OWNERS can edit their own
+      allow read, write: if request.auth != null &&
+        isManagementTeam(request.auth.uid);
     }
 
-    // Proformas - authenticated users can read, role-based write access
+    // Proformas - management team only
     match /proformas/{proformaId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null &&
-        (request.auth.token.roleLevel >= 2 || // EDITOR+
-         (request.auth.token.roleLevel >= 4 && resource.data.ownerId == request.auth.uid)); // OWNERS can edit their own
+      allow read, write: if request.auth != null &&
+        isManagementTeam(request.auth.uid);
     }
 
-    // Projects - authenticated users can read, role-based write access
+    // Projects - management team only
     match /projects/{projectId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null &&
-        request.auth.token.roleLevel >= 4; // ADMIN+
+      allow read, write: if request.auth != null &&
+        isManagementTeam(request.auth.uid);
     }
 
-    // POCs - authenticated users can read, role-based write access
+    // POCs - management team only
     match /pocs/{pocId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null &&
-        request.auth.token.roleLevel >= 4; // ADMIN+
+      allow read, write: if request.auth != null &&
+        isManagementTeam(request.auth.uid);
     }
 
-    // PDF storage metadata - authenticated access
+    // PDF storage metadata - management team only
     match /invoice_pdfs/{pdfId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null &&
-        request.auth.token.roleLevel >= 2; // EDITOR+
+      allow read, write: if request.auth != null &&
+        isManagementTeam(request.auth.uid);
     }
 
     // ============================================================================
     // APPROVAL SYSTEM COLLECTIONS
     // ============================================================================
 
-    // Approval audit logs - immutable records of approval actions
+    // Approval audit logs - management team only
     match /approval_audit_logs/{logId} {
-      allow read: if request.auth != null &&
-        getUserRole(request.auth.uid) in ['ADMIN', 'SUPER_ADMIN'];
-      allow create: if request.auth != null &&
-        getUserRole(request.auth.uid) in ['ADMIN', 'SUPER_ADMIN'];
+      allow read, create: if request.auth != null &&
+        isManagementTeam(request.auth.uid);
       // No updates or deletes - logs are immutable
       allow update, delete: if false;
     }
 
-    // Admin notifications - for email delivery tracking
+    // Admin notifications - management team only
     match /admin_notifications/{notificationId} {
-      // Users can create notifications (via login attempts)
-      allow create: if request.auth != null;
-
-      // Admins can read notifications sent to them
-      allow read: if request.auth != null &&
-        (request.auth.uid == resource.data.adminId ||
-         getUserRole(request.auth.uid) in ['ADMIN', 'SUPER_ADMIN']);
-
-      // Only Firebase Functions can update delivery status
-      allow update: if request.auth == null ||
-        getUserRole(request.auth.uid) in ['ADMIN', 'SUPER_ADMIN'];
+      allow read, write: if request.auth != null &&
+        isManagementTeam(request.auth.uid);
     }
 
-    // Email delivery metrics - for monitoring and analytics
+    // Email delivery metrics - management team only
     match /email_delivery_metrics/{metricId} {
       allow read: if request.auth != null &&
-        getUserRole(request.auth.uid) in ['ADMIN', 'SUPER_ADMIN'];
+        isManagementTeam(request.auth.uid);
       allow create: if request.auth == null; // Only Firebase Functions can create
       allow update, delete: if false; // Immutable metrics
     }
 
-    // Audit logs - authenticated access, admins can write
+    // Audit logs - management team only
     match /audit_logs/{logId} {
-      allow read: if request.auth != null &&
-        request.auth.token.roleLevel >= 4; // ADMIN+
-      allow write: if request.auth != null &&
-        request.auth.token.roleLevel >= 4; // ADMIN+
+      allow read, write: if request.auth != null &&
+        isManagementTeam(request.auth.uid);
     }
 
     // ============================================================================

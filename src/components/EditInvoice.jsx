@@ -429,9 +429,9 @@ export default function EditInvoice() {
         {/* Title chip (matches Edit Proforma) */}
         <div className="bg-[#ffffff] shadow-sm mb-4 p-[15px] rounded-xl flex justify-between items-center">
           <h2 className="font-semibold text-[#000000] m-[0]">Edit Invoice</h2>
-          {authService.isAdmin() && (
+          {authService.isManagement() && (
             <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
-              Admin Mode
+              Management Team
             </span>
           )}
         </div>

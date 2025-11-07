@@ -46,9 +46,8 @@ if (import.meta.env.VITE_ENABLE_APP_CHECK === 'true') {
       provider: new ReCaptchaV3Provider(import.meta.env.VITE_RECAPTCHA_SITE_KEY),
       isTokenAutoRefreshEnabled: true
     });
-    console.log('App Check initialized successfully');
   } catch (error) {
-    console.warn('App Check initialization failed:', error.message);
+    // Silently handle App Check errors in production
   }
 }
 

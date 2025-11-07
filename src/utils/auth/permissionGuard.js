@@ -1,22 +1,13 @@
 /**
- * Permission Guard System - Enterprise Grade
- * Implements fine-grained access control with caching and performance optimization
- * Designed for high-scale applications with millions of users
+ * Permission Guard - Authorization and access control
+ * Handles permission checking, resource access, and business rules
  */
 
-import { authService, USER_ROLES, PERMISSIONS } from './authService.jsx';
-import { logger } from './logger';
+import { authService } from './authService';
+import { logger } from '../logger';
 
-// ============================================================================
-// PERFORMANCE OPTIMIZATION
-// ============================================================================
-
-/**
- * Permission Cache with TTL
- * Reduces database calls and improves response times
- */
 class PermissionCache {
-  constructor(ttlMs = 300000) { // 5 minutes default TTL
+  constructor(ttlMs = 300000) {
     this.cache = new Map();
     this.ttl = ttlMs;
   }
@@ -53,14 +44,6 @@ class PermissionCache {
   }
 }
 
-// ============================================================================
-// PERMISSION GUARD IMPLEMENTATION
-// ============================================================================
-
-/**
- * Core Permission Guard Class
- * Handles all permission checking with enterprise-grade features
- */
 export class PermissionGuard {
   constructor() {
     this.cache = new PermissionCache();
@@ -68,16 +51,6 @@ export class PermissionGuard {
     this.maxAuditLogSize = 10000;
   }
 
-  // ============================================================================
-  // BASIC PERMISSION CHECKING
-  // ============================================================================
-
-  /**
-   * Check if current user has specific permission
-   * @param {string} permission - Permission to check
-   * @param {Object} context - Additional context for fine-grained control
-   * @returns {boolean} True if permission granted
-   */
   async checkPermission(permission, context = {}) {
     const cacheKey = this.generateCacheKey(permission, context);
     const cached = this.cache.get(cacheKey);
@@ -94,12 +67,6 @@ export class PermissionGuard {
     return result;
   }
 
-  /**
-   * Require permission or throw error
-   * @param {string} permission - Required permission
-   * @param {Object} context - Additional context
-   * @throws {PermissionError} If permission denied
-   */
   async requirePermission(permission, context = {}) {
     const hasPermission = await this.checkPermission(permission, context);
 
@@ -121,12 +88,6 @@ export class PermissionGuard {
     }
   }
 
-  /**
-   * Check multiple permissions (AND logic)
-   * @param {string[]} permissions - Array of permissions to check
-   * @param {Object} context - Context for all checks
-   * @returns {boolean} True if all permissions granted
-   */
   async checkAllPermissions(permissions, context = {}) {
     for (const permission of permissions) {
       if (!(await this.checkPermission(permission, context))) {
@@ -136,12 +97,6 @@ export class PermissionGuard {
     return true;
   }
 
-  /**
-   * Check multiple permissions (OR logic)
-   * @param {string[]} permissions - Array of permissions to check
-   * @param {Object} context - Context for all checks
-   * @returns {boolean} True if any permission granted
-   */
   async checkAnyPermission(permissions, context = {}) {
     for (const permission of permissions) {
       if (await this.checkPermission(permission, context)) {
@@ -151,18 +106,6 @@ export class PermissionGuard {
     return false;
   }
 
-  // ============================================================================
-  // RESOURCE-SPECIFIC PERMISSION CHECKING
-  // ============================================================================
-
-  /**
-   * Check permission for specific resource
-   * @param {string} resourceType - Type of resource (invoice, client, project)
-   * @param {string} resourceId - Resource identifier
-   * @param {string} action - Action to perform (read, write, delete)
-   * @param {Object} resourceData - Resource data for ownership checks
-   * @returns {boolean} True if access granted
-   */
   async checkResourceAccess(resourceType, resourceId, action, resourceData = {}) {
     const permission = this.mapResourceToPermission(resourceType, action);
     if (!permission) return false;
@@ -177,13 +120,6 @@ export class PermissionGuard {
     return await this.checkPermission(permission, context);
   }
 
-  /**
-   * Require resource access or throw error
-   * @param {string} resourceType - Type of resource
-   * @param {string} resourceId - Resource identifier
-   * @param {string} action - Action to perform
-   * @param {Object} resourceData - Resource data
-   */
   async requireResourceAccess(resourceType, resourceId, action, resourceData = {}) {
     const hasAccess = await this.checkResourceAccess(resourceType, resourceId, action, resourceData);
 
@@ -196,20 +132,9 @@ export class PermissionGuard {
     }
   }
 
-  // ============================================================================
-  // BUSINESS LOGIC PERMISSION CHECKING
-  // ============================================================================
-
-  /**
-   * Check if user can edit invoice (business rules)
-   * @param {Object} invoiceData - Invoice data
-   * @returns {boolean} True if can edit
-   */
   async canEditInvoice(invoiceData) {
-    // Business rules for invoice editing
     if (!invoiceData) return false;
 
-    // Check basic permission
     const hasBasicPermission = await this.checkPermission('UPDATE_INVOICE', {
       invoiceId: invoiceData.id,
       invoiceData
@@ -217,7 +142,6 @@ export class PermissionGuard {
 
     if (!hasBasicPermission) return false;
 
-    // Business rule: Cannot edit finalized invoices
     if (invoiceData.status === 'finalized') {
       return await this.checkPermission('ADMIN_OVERRIDE', {
         reason: 'edit_finalized_invoice',
@@ -225,7 +149,6 @@ export class PermissionGuard {
       });
     }
 
-    // Business rule: Cannot edit invoices older than 30 days
     if (this.isInvoiceTooOld(invoiceData)) {
       return await this.checkPermission('ADMIN_OVERRIDE', {
         reason: 'edit_old_invoice',
@@ -236,15 +159,9 @@ export class PermissionGuard {
     return true;
   }
 
-  /**
-   * Check if user can delete client (business rules)
-   * @param {Object} clientData - Client data
-   * @returns {boolean} True if can delete
-   */
   async canDeleteClient(clientData) {
     if (!clientData) return false;
 
-    // Check basic permission
     const hasBasicPermission = await this.checkPermission('DELETE_CLIENT', {
       clientId: clientData.id,
       clientData
@@ -252,7 +169,6 @@ export class PermissionGuard {
 
     if (!hasBasicPermission) return false;
 
-    // Business rule: Cannot delete clients with active invoices
     if (await this.clientHasActiveInvoices(clientData.id)) {
       return await this.checkPermission('ADMIN_OVERRIDE', {
         reason: 'delete_client_with_invoices',
@@ -263,20 +179,11 @@ export class PermissionGuard {
     return true;
   }
 
-  // ============================================================================
-  // ROLE-BASED CHECKING
-  // ============================================================================
-
-  /**
-   * Check if user is management team (server-side with hashed UID)
-   * @returns {Promise<boolean>} True if management team member
-   */
   async isManagement() {
     const user = authService.getCurrentUser();
     if (!user) return false;
 
     try {
-      // Use the authService method which includes hashing
       return await authService.checkServerSideManagementStatus();
     } catch (error) {
       console.error('Failed to check management status:', error);
@@ -284,10 +191,6 @@ export class PermissionGuard {
     }
   }
 
-  /**
-   * Hash UID for secure storage
-   * @private
-   */
   async hashUid(uid) {
     const encoder = new TextEncoder();
     const data = encoder.encode(uid + 'wallsandtrends_salt');
@@ -296,19 +199,10 @@ export class PermissionGuard {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  /**
-   * Check if user has minimum role level (legacy - now uses isManagement)
-   * @param {string} minRole - Minimum required role
-   * @returns {boolean} True if user meets role requirement
-   */
   hasMinimumRole(minRole) {
     return this.isManagement();
   }
 
-  /**
-   * Require minimum role or throw error (legacy - now uses isManagement)
-   * @param {string} minRole - Minimum required role
-   */
   requireMinimumRole(minRole) {
     if (!this.isManagement()) {
       throw new PermissionError(
@@ -319,102 +213,26 @@ export class PermissionGuard {
     }
   }
 
-  /**
-   * Check if user is admin or super admin (legacy - now uses isManagement)
-   * @returns {boolean} True if admin level access
-   */
   isAdmin() {
     return this.isManagement();
   }
 
-  /**
-   * Check if user is super admin (legacy - now uses isManagement)
-   * @returns {boolean} True if super admin
-   */
   isSuperAdmin() {
     return this.isManagement();
   }
 
-  // ============================================================================
-  // PRIVATE METHODS
-  // ============================================================================
-
-  /**
-   * Evaluate permission against user roles and context 
-   * @private
-   */
   async evaluatePermission(permission, context) {
     const user = authService.getCurrentUser();
-
-    // Not authenticated
     if (!user) return false;
-
-    // Check server-side management status
-    const isManagement = await this.isManagement();
-    return isManagement;
-  }
-
-  /**
-   * Evaluate contextual permission rules
-   * @private
-   */
-  async evaluateContext(permission, context, user) {
-    // Management team bypasses all contextual checks
-    const isManagement = await this.isManagement();
-    return isManagement;
-  }
-
-  /**
-   * Evaluate resource-specific context
-   * @private
-   */
-  async evaluateResourceContext(permission, context, user) {
-    // Management team has all resource permissions
-    const isManagement = await this.isManagement();
-    return isManagement;
-  }
-
-  /**
-   * Evaluate invoice-specific permissions
-   * @private
-   */
-  async evaluateInvoicePermission(permission, invoiceData, user) {
-    // Management team can do anything with invoices
     return await this.isManagement();
   }
 
-  /**
-   * Evaluate client-specific permissions
-   * @private
-   */
-  async evaluateClientPermission(permission, clientData, user) {
-    // Management team can do anything with clients
-    return await this.isManagement();
-  }
-
-  /**
-   * Evaluate project-specific permissions
-   * @private
-   */
-  async evaluateProjectPermission(permission, projectData, user) {
-    // Management team can do anything with projects
-    return await this.isManagement();
-  }
-
-  /**
-   * Generate cache key for permission checks
-   * @private
-   */
   generateCacheKey(permission, context) {
     const userId = authService.getCurrentUser()?.uid || 'anonymous';
     const contextStr = JSON.stringify(context);
     return `${userId}:${permission}:${contextStr}`;
   }
 
-  /**
-   * Map resource type and action to permission
-   * @private
-   */
   mapResourceToPermission(resourceType, action) {
     const mapping = {
       invoice: {
@@ -440,10 +258,6 @@ export class PermissionGuard {
     return mapping[resourceType]?.[action] || null;
   }
 
-  /**
-   * Check if invoice is too old to edit
-   * @private
-   */
   isInvoiceTooOld(invoiceData) {
     if (!invoiceData.createdAt) return false;
 
@@ -454,30 +268,10 @@ export class PermissionGuard {
     return createdDate < thirtyDaysAgo;
   }
 
-  /**
-   * Check if client has active invoices
-   * @private
-   */
   async clientHasActiveInvoices(clientId) {
-    // This would typically query the database
-    // For now, return false (implement based on your data structure)
-    return false;
+    return false; // Implementation needed based on data structure
   }
 
-  /**
-   * Check if client has active projects
-   * @private
-   */
-  async clientHasActiveProjects(clientId) {
-    // This would typically query the database
-    // For now, return false (implement based on your data structure)
-    return false;
-  }
-
-  /**
-   * Log audit events
-   * @private
-   */
   logAudit(eventType, permission, context, result) {
     const auditEntry = {
       timestamp: new Date(),
@@ -487,52 +281,33 @@ export class PermissionGuard {
       context,
       result,
       userAgent: navigator.userAgent,
-      ipAddress: 'client-side' // Would be set by server
+      ipAddress: 'client-side'
     };
 
     this.auditLog.push(auditEntry);
 
-    // Maintain max log size
     if (this.auditLog.length > this.maxAuditLogSize) {
       this.auditLog.shift();
     }
 
-    // Log to external service in production
     if (process.env.NODE_ENV === 'production') {
       logger.info('Permission audit', auditEntry);
     }
   }
 
-  /**
-   * Clear permission cache
-   */
   clearCache() {
     this.cache.clear();
   }
 
-  /**
-   * Invalidate cache for specific patterns
-   */
   invalidateCache(pattern) {
     this.cache.invalidate(pattern);
   }
 
-  /**
-   * Get audit log
-   */
   getAuditLog(limit = 100) {
     return this.auditLog.slice(-limit);
   }
 }
 
-// ============================================================================
-// CUSTOM ERROR CLASS
-// ============================================================================
-
-/**
- * Permission Error Class
- * Provides detailed information about permission failures
- */
 export class PermissionError extends Error {
   constructor(message, permission, context = {}) {
     super(message);
@@ -543,19 +318,11 @@ export class PermissionError extends Error {
   }
 }
 
-// ============================================================================
-// SINGLETON INSTANCE
-// ============================================================================
-
 export const permissionGuard = new PermissionGuard();
 
-// ============================================================================
-// REACT HOOKS AND COMPONENTS
-// ============================================================================
+// React hooks
+import React from 'react';
 
-/**
- * React hook for permission checking
- */
 export function usePermission() {
   const {
     checkPermission,
@@ -571,26 +338,23 @@ export function usePermission() {
   } = permissionGuard;
 
   return {
-    // Sync permission check for immediate use
     hasPermission: (permission, context = {}) => {
       try {
         const user = authService.getCurrentUser();
         if (!user) return false;
-        
-        // Simple synchronous permission check for immediate use
-        const userRoleLevel = USER_ROLES[user.role] || 0;
-        const permissionConfig = PERMISSIONS[permission];
-        
+
+        const userRoleLevel = authService.USER_ROLES[user.role] || 0;
+        const permissionConfig = authService.PERMISSIONS[permission];
+
         if (!permissionConfig) return false;
-        
+
         return permissionConfig.includes(userRoleLevel);
       } catch (error) {
         console.warn('Permission check failed:', error);
         return false;
       }
     },
-    
-    // Async permission check for complex scenarios
+
     checkPermission: (permission, context = {}) => checkPermission(permission, context),
     requirePermission: (permission, context = {}) => requirePermission(permission, context),
     checkAllPermissions: (permissions, context = {}) => checkAllPermissions(permissions, context),
@@ -605,9 +369,6 @@ export function usePermission() {
   };
 }
 
-/**
- * Higher-order component for permission guarding
- */
 export function withPermissionGuard(WrappedComponent, permission, context = {}) {
   return function PermissionGuardedComponent(props) {
     const [hasPermission, setHasPermission] = React.useState(null);
@@ -641,9 +402,6 @@ export function withPermissionGuard(WrappedComponent, permission, context = {}) 
   };
 }
 
-/**
- * Permission guard component
- */
 export function PermissionGuardComponent({ permission, context, children, fallback }) {
   const [hasPermission, setHasPermission] = React.useState(null);
   const [error, setError] = React.useState(null);
@@ -674,6 +432,3 @@ export function PermissionGuardComponent({ permission, context, children, fallba
 
   return children;
 }
-
-// Add React import
-import React from 'react';

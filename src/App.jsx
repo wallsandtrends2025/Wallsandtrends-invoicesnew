@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
+import BackupService from "./utils/backupService";
 
 import Login from "./components/Login";
 import DashboardLayout from "./components/DashboardLayout";
@@ -43,6 +44,7 @@ import PreviewPOC from "./components/PreviewPOC";
 import PDFManager from "./components/PDFManager";
 import PDFViewer from "./components/PDFViewer";
 import AuditManager from "./components/AuditManager";
+import BackupManager from "./components/BackupManager";
 
 function ProtectedRoute({ children }) {
   const [user, setUser] = useState(null);
@@ -52,6 +54,11 @@ function ProtectedRoute({ children }) {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoading(false);
+
+      // Initialize backup service for management users
+      if (u) {
+        BackupService.initializeDailyBackup();
+      }
     });
     return () => unsub();
   }, []);
@@ -120,10 +127,11 @@ export default function App() {
         <Route path="edit-poc/:id" element={<EditPOC />} />
         <Route path="preview-poc/:id" element={<PreviewPOC />} />
 
-        {/* pdf / audit */}
+        {/* pdf / audit / backup */}
         <Route path="pdf-manager" element={<PDFManager />} />
         <Route path="pdf-viewer/:pdfId" element={<PDFViewer />} />
         <Route path="audit-manager" element={<AuditManager />} />
+        <Route path="backup-manager" element={<BackupManager />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/login" />} />

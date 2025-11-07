@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import CurrencyService from "../utils/CurrencyService";
 import { permissionGuard, usePermission } from "../utils/permissionGuard";
 import { authService } from "../utils/authService.jsx";
+import { logger } from "../utils/logger";
 
 export default function AllInvoices() {
   const [invoices, setInvoices] = useState([]);
